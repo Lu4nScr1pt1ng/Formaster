@@ -14,7 +14,7 @@
         ? 'border-emerald-800 bg-emerald-950/95 text-emerald-100'
         : toast.variant === 'error'
           ? 'border-red-800 bg-red-950/95 text-red-100'
-          : 'border-neutral-700 bg-neutral-900/95 text-neutral-100'}"
+          : 'border-hair bg-surface/95 text-ink-1'}"
     >
       {#if toast.variant === 'success'}
         <CheckCircleIcon size={15} weight="fill" />

@@ -20,6 +20,10 @@
   let container = $state<HTMLDivElement | undefined>();
   let view: EditorView | undefined;
 
+  // `language` picks the CodeMirror extension once, at mount — every caller
+  // passes a fixed language for the instance's whole lifetime, it's never
+  // toggled on a mounted editor.
+  // svelte-ignore state_referenced_locally
   const languageExtension = language === 'json' ? json() : javascript();
 
   onMount(() => {
@@ -63,4 +67,4 @@
   });
 </script>
 
-<div bind:this={container} class="overflow-hidden rounded-md border border-neutral-300 dark:border-neutral-700"></div>
+<div bind:this={container} class="overflow-hidden rounded-lg border border-hair"></div>

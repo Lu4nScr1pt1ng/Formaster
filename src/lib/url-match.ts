@@ -3,7 +3,20 @@
  * (scheme://host/path, "*" wildcards) so scripts can be matched against a
  * tab URL at runtime — this is separate from `content_scripts.matches` in
  * the manifest, which only handles static injection.
+ *
+ * Extension beyond the spec: an optional trailing `#fragment` segment is
+ * matched against the URL's hash. Real match patterns can't do this (the
+ * spec explicitly ignores the fragment), but hash-based SPA routers (e.g.
+ * `#/checkout`) put the actual "page" identity there, so our own matcher
+ * (used for auto-detection, never for manifest `content_scripts.matches`)
+ * understands it.
  */
+function splitFragment(pattern: string): { base: string; fragment: string | null } {
+  const hashIndex = pattern.indexOf('#');
+  if (hashIndex === -1) return { base: pattern, fragment: null };
+  return { base: pattern.slice(0, hashIndex), fragment: pattern.slice(hashIndex) };
+}
+
 function patternToRegExp(pattern: string): RegExp {
   if (pattern === '<all_urls>') {
     return /^(https?|file|ftp):\/\/.*$/;
@@ -36,13 +49,24 @@ function patternToRegExp(pattern: string): RegExp {
   return new RegExp(`^${schemePart}:\\/\\/${hostPart}${pathPart}$`);
 }
 
+function fragmentToRegExp(fragment: string): RegExp {
+  const escaped = escapeRegExp(fragment).replace(/\\\*/g, '.*');
+  return new RegExp(`^${escaped}`);
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function matchesPattern(url: string, pattern: string): boolean {
   try {
-    return patternToRegExp(pattern).test(url);
+    const { base, fragment } = splitFragment(pattern);
+    if (!fragment) {
+      return patternToRegExp(base).test(url);
+    }
+    const target = new URL(url);
+    const urlWithoutHash = target.href.slice(0, target.href.length - target.hash.length);
+    return patternToRegExp(base).test(urlWithoutHash) && fragmentToRegExp(fragment).test(target.hash);
   } catch {
     return false;
   }
@@ -61,15 +85,48 @@ export function matchesAnyPattern(url: string, patterns: string[]): boolean {
 export function patternToNavigableUrl(pattern: string): string | null {
   if (pattern === '<all_urls>') return null;
 
-  const fileMatch = pattern.match(/^file:\/\/(\/[^*]*)/);
-  if (fileMatch) return `file://${fileMatch[1]}`;
+  const { base, fragment } = splitFragment(pattern);
+  const suffix = fragment ? fragment.replace(/\*+$/, '') : '';
 
-  const match = pattern.match(/^(\*|https?|ftp):\/\/(\*|\*\.[^/*]+|[^/*]+)(\/.*)$/);
+  const fileMatch = base.match(/^file:\/\/(\/[^*]*)/);
+  if (fileMatch) return `file://${fileMatch[1]}${suffix}`;
+
+  const match = base.match(/^(\*|https?|ftp):\/\/(\*|\*\.[^/*]+|[^/*]+)(\/.*)$/);
   if (!match) return null;
-  const [, scheme, host] = match;
+  const [, scheme, host, path] = match;
   if (host === '*') return null;
 
   const resolvedScheme = scheme === '*' ? 'https' : scheme;
   const resolvedHost = host.startsWith('*.') ? host.slice(2) : host;
-  return `${resolvedScheme}://${resolvedHost}/`;
+  const resolvedPath = path.replace(/\*+$/, '') || '/';
+  return `${resolvedScheme}://${resolvedHost}${resolvedPath}${suffix}`;
+}
+
+/**
+ * Suggests a script name + match pattern scoped to the *specific page* a
+ * script was mapped from (e.g. `example.com/checkout/form.html`), not the
+ * whole site — so a script for one form doesn't get offered on every other
+ * page of the same domain. Falls back to the bare hostname when the path is
+ * just `/`. Also captures a hash-based SPA route (`#/checkout`) when present,
+ * since the pathname alone often can't tell those routes apart.
+ */
+export function suggestScriptTarget(pageUrl: string): { name: string; urlPattern: string } {
+  try {
+    const url = new URL(pageUrl);
+    const routeHash = /^#!?\//.test(url.hash) ? url.hash.replace(/\?.*$/, '') + '*' : '';
+
+    // file: URLs have no host component at all ("file:///path"), so the "*"
+    // scheme wildcard (which only expands to http/https) can't be used here.
+    if (url.protocol === 'file:') {
+      const fileLabel = url.pathname.split('/').filter(Boolean).pop() || url.pathname;
+      return { name: `${fileLabel} script`, urlPattern: `file://${url.pathname}*${routeHash}` };
+    }
+
+    const hasPath = url.pathname !== '/' && url.pathname !== '';
+    const pattern = `*://${url.hostname}${hasPath ? url.pathname : '/'}*${routeHash}`;
+    const label = hasPath ? `${url.hostname}${url.pathname}` : url.hostname;
+    return { name: `${label} script`, urlPattern: pattern };
+  } catch {
+    return { name: 'New script', urlPattern: '*://*/*' };
+  }
 }

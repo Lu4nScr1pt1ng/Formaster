@@ -18,12 +18,6 @@ const STREET_NAMES = [
   'Sete de Setembro', 'Rio Branco', 'das Palmeiras', 'do Comercio', 'Central',
 ];
 
-const CITY_STATE: Array<[city: string, state: string]> = [
-  ['Sao Paulo', 'SP'], ['Rio de Janeiro', 'RJ'], ['Belo Horizonte', 'MG'],
-  ['Curitiba', 'PR'], ['Porto Alegre', 'RS'], ['Salvador', 'BA'],
-  ['Recife', 'PE'], ['Fortaleza', 'CE'], ['Brasilia', 'DF'], ['Manaus', 'AM'],
-];
-
 const AREA_CODES = ['11', '21', '31', '41', '51', '61', '71', '81', '85', '91'];
 
 const COMPANY_SUFFIXES = ['Tecnologia', 'Comercio', 'Solucoes', 'Servicos', 'Industria', 'Consultoria'];
@@ -67,14 +61,6 @@ export function generateAddressStreet(): string {
 
 export function generateAddressNumber(): string {
   return String(randomInt(1, 9999));
-}
-
-export function generateAddressCity(): string {
-  return pick(CITY_STATE)[0];
-}
-
-export function generateAddressState(): string {
-  return pick(CITY_STATE)[1];
 }
 
 export function generateCompany(): string {

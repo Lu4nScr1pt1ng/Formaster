@@ -53,10 +53,10 @@ export class PickerOverlay {
 
     const style = document.createElement('style');
     style.textContent = `
-      .box { position: fixed; border: 2px solid #6366f1; background: rgba(99,102,241,.15); border-radius: 4px; pointer-events: none; }
-      .badge { position: fixed; background: #6366f1; color: #fff; font: 600 11px/1.4 ui-sans-serif, system-ui, sans-serif; padding: 2px 6px; border-radius: 4px; pointer-events: none; white-space: nowrap; }
-      .toolbar { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; font: 500 13px/1.4 ui-sans-serif, system-ui, sans-serif; padding: 8px 14px; border-radius: 999px; box-shadow: 0 8px 24px rgba(0,0,0,.35); pointer-events: auto; display: flex; gap: 10px; align-items: center; }
-      .toolbar button { all: unset; cursor: pointer; padding: 4px 10px; border-radius: 999px; background: #ef4444; font-weight: 600; }
+      .box { position: fixed; border: 2px solid #eea63c; background: rgba(238,166,60,.15); border-radius: 4px; pointer-events: none; }
+      .badge { position: fixed; background: #eea63c; color: #17130a; font: 600 11px/1.4 ui-sans-serif, system-ui, sans-serif; padding: 2px 6px; border-radius: 4px; pointer-events: none; white-space: nowrap; }
+      .toolbar { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #16161a; color: #f1efe9; font: 500 13px/1.4 ui-sans-serif, system-ui, sans-serif; padding: 8px 14px; border-radius: 999px; box-shadow: 0 8px 24px rgba(0,0,0,.45); pointer-events: auto; display: flex; gap: 10px; align-items: center; border: 1px solid rgba(255,255,255,.08); }
+      .toolbar button { all: unset; cursor: pointer; padding: 4px 10px; border-radius: 999px; background: #eea63c; color: #17130a; font-weight: 600; }
     `;
     shadow.appendChild(style);
 

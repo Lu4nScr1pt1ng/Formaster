@@ -40,7 +40,7 @@
     }}
   >
     <div
-      class="w-full max-w-sm rounded-xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl"
+      class="w-full max-w-sm rounded-xl bg-surface p-5 shadow-2xl"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="confirm-dialog-title"
@@ -49,29 +49,29 @@
         <div
           class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full {danger
             ? 'bg-red-500/15 text-red-400'
-            : 'bg-accent-500/15 text-accent-400'}"
+            : 'bg-accent-500/15 text-accent-500'}"
         >
           <WarningIcon size={18} weight="bold" />
         </div>
         <div class="min-w-0">
-          <h2 id="confirm-dialog-title" class="text-sm font-semibold text-neutral-100">{title}</h2>
-          <p class="mt-1 text-sm text-neutral-400">{message}</p>
+          <h2 id="confirm-dialog-title" class="text-sm font-semibold text-ink-1">{title}</h2>
+          <p class="mt-1 text-sm text-ink-2">{message}</p>
         </div>
       </div>
 
       <div class="mt-5 flex justify-end gap-2">
         <button
           type="button"
-          class="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm text-neutral-200 transition active:scale-[0.97] hover:bg-neutral-900"
+          class="rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
           onclick={onCancel}
         >
           {cancelLabel}
         </button>
         <button
           type="button"
-          class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white transition active:scale-[0.97] {danger
-            ? 'bg-red-600 hover:bg-red-700'
-            : 'bg-accent-600 hover:bg-accent-700'}"
+          class="rounded-lg px-3 py-1.5 text-sm font-semibold transition active:scale-[0.97] {danger
+            ? 'bg-red-500 text-red-950 hover:bg-red-400'
+            : 'bg-accent-500 text-accent-ink hover:bg-accent-600'}"
           onclick={onConfirm}
         >
           {confirmLabel}

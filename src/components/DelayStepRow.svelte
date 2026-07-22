@@ -30,11 +30,11 @@
   }
 </script>
 
-<div class="flex items-center gap-2 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-2.5 dark:border-neutral-700 dark:bg-neutral-900/50">
+<div class="flex items-center gap-2 rounded-xl border border-dashed border-white/12 p-2.5">
   <div class="flex shrink-0 flex-col">
     <button
       type="button"
-      class="rounded p-0.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 disabled:pointer-events-none disabled:opacity-25 dark:hover:bg-neutral-900 dark:hover:text-neutral-200"
+      class="rounded p-0.5 text-ink-3 hover:bg-surface-hover hover:text-ink-1 disabled:pointer-events-none disabled:opacity-25"
       title="Move up"
       aria-label="Move up"
       disabled={!canMoveUp}
@@ -44,7 +44,7 @@
     </button>
     <button
       type="button"
-      class="rounded p-0.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 disabled:pointer-events-none disabled:opacity-25 dark:hover:bg-neutral-900 dark:hover:text-neutral-200"
+      class="rounded p-0.5 text-ink-3 hover:bg-surface-hover hover:text-ink-1 disabled:pointer-events-none disabled:opacity-25"
       title="Move down"
       aria-label="Move down"
       disabled={!canMoveDown}
@@ -54,22 +54,22 @@
     </button>
   </div>
 
-  <TimerIcon size={15} class="shrink-0 text-neutral-400" />
-  <span class="text-sm font-medium text-neutral-600 dark:text-neutral-300">Wait</span>
+  <TimerIcon size={15} class="shrink-0 text-ink-3" />
+  <span class="text-sm font-medium text-ink-2">Wait</span>
 
   <input
     type="number"
     min="0"
     step="100"
-    class="w-20 rounded-md border border-neutral-300 bg-transparent px-1.5 py-1 text-right text-xs dark:border-neutral-700"
+    class="w-20 rounded-md border border-hair bg-canvas px-1.5 py-1 text-right text-xs text-ink-1 outline-none focus:border-accent-500"
     value={step.delayMs}
     oninput={(event) => setDelay((event.currentTarget as HTMLInputElement).value)}
   />
-  <span class="text-xs text-neutral-500">ms before the next field</span>
+  <span class="text-xs text-ink-3">ms before the next field</span>
 
   <button
     type="button"
-    class="ml-auto rounded-md p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+    class="ml-auto rounded-md p-1.5 text-ink-3 hover:bg-red-500/10 hover:text-red-400"
     title="Remove wait"
     aria-label="Remove wait"
     onclick={() => (confirmRemoveOpen = true)}

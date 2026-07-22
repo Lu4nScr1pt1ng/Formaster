@@ -50,12 +50,16 @@ export const builtinGeneratorIdSchema = z.enum([
   'addressNumber',
   'addressCity',
   'addressState',
+  'addressNeighborhood',
   'company',
   'uuid',
   'integer',
   'decimal',
   'boolean',
   'lorem',
+  'creditCardNumber',
+  'creditCardExpiry',
+  'creditCardCvc',
 ]);
 export type BuiltinGeneratorId = z.infer<typeof builtinGeneratorIdSchema>;
 
@@ -106,8 +110,28 @@ export const fieldStepSchema = z.object({
 });
 export type FieldStep = z.infer<typeof fieldStepSchema>;
 
-/** One item in a script's ordered fill sequence — either a field to fill or a pause. */
-export const scriptStepSchema = z.discriminatedUnion('type', [fieldStepSchema, delayStepSchema]);
+export const waitConditionSchema = z.enum(['enabled', 'visible', 'exists', 'checked']);
+export type WaitCondition = z.infer<typeof waitConditionSchema>;
+
+/**
+ * A conditional pause: unlike `delay` (a fixed wait), this blocks the fill
+ * sequence until an element matching `selectors` satisfies `condition` (or
+ * `timeoutMs` elapses, in which case the fill just moves on) — for pages
+ * where one field only unlocks once an earlier one is filled in (e.g. a
+ * neighborhood `<select>` disabled until a CEP lookup resolves).
+ */
+export const waitForStepSchema = z.object({
+  type: z.literal('waitFor'),
+  id: z.string().min(1),
+  selectors: z.array(selectorCandidateSchema).min(1),
+  condition: waitConditionSchema.default('enabled'),
+  timeoutMs: z.number().positive().default(5000),
+  pollIntervalMs: z.number().positive().default(150),
+});
+export type WaitForStep = z.infer<typeof waitForStepSchema>;
+
+/** One item in a script's ordered fill sequence — a field, a fixed pause, or a conditional wait. */
+export const scriptStepSchema = z.discriminatedUnion('type', [fieldStepSchema, delayStepSchema, waitForStepSchema]);
 export type ScriptStep = z.infer<typeof scriptStepSchema>;
 
 /**
@@ -181,7 +205,7 @@ export function duplicateScript(script: FormScript): FormScript {
   }));
 
   const steps: ScriptStep[] = script.steps.map((step) => {
-    if (step.type === 'delay') return { ...step, id: crypto.randomUUID() };
+    if (step.type === 'delay' || step.type === 'waitFor') return { ...step, id: crypto.randomUUID() };
     const generator: GeneratorRef =
       step.field.generator.kind === 'custom'
         ? { ...step.field.generator, generatorId: generatorIdMap.get(step.field.generator.generatorId) ?? step.field.generator.generatorId }

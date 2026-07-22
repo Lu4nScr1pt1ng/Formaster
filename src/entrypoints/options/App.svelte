@@ -19,6 +19,7 @@
   import { clearDraft, getDraft } from '../../lib/storage/draft-store';
   import { deleteScript, exportScript, listScripts, saveScript } from '../../lib/storage/scripts-store';
   import { pushToast } from '../../lib/toast/toast-store.svelte';
+  import { suggestScriptTarget } from '../../lib/url-match';
 
   let scripts = $state<FormScript[]>([]);
   let selectedId = $state<string | null>(null);
@@ -48,11 +49,8 @@
 
     const draft = await getDraft();
     if (draft) {
-      const hostname = safeHostname(draft.pageUrl);
-      const script = createEmptyScript(
-        hostname ? `${hostname} script` : 'New script',
-        hostname ? `*://${hostname}/*` : '*://*/*',
-      );
+      const { name, urlPattern } = suggestScriptTarget(draft.pageUrl);
+      const script = createEmptyScript(name, urlPattern);
       script.steps = draft.fields.map((field) => ({
         type: 'field',
         field: {
@@ -88,14 +86,6 @@
     scripts = await listScripts();
     if (scripts.some((script) => script.id === scriptId)) {
       selectedId = scriptId;
-    }
-  }
-
-  function safeHostname(url: string): string {
-    try {
-      return new URL(url).hostname;
-    } catch {
-      return '';
     }
   }
 
@@ -159,19 +149,22 @@
   }
 </script>
 
-<div class="flex h-screen bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-  <aside class="w-64 shrink-0 border-r border-neutral-200 dark:border-neutral-800">
+<div class="flex h-screen bg-canvas text-ink-1">
+  <aside class="flex w-64 shrink-0 flex-col border-r border-hair bg-sidebar">
     <div class="flex items-center gap-2 px-4 py-4">
-      <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-500 text-white">
-        <MagicWandIcon size={16} weight="bold" />
+      <div class="relative flex h-[22px] w-[22px] shrink-0 items-center justify-center">
+        <div class="absolute inset-[-6px] -z-10 rounded-full bg-accent-500/35 blur-[5px]"></div>
+        <div class="flex h-[22px] w-[22px] items-center justify-center rounded-[7px] bg-accent-500 text-accent-ink">
+          <MagicWandIcon size={12} weight="bold" />
+        </div>
       </div>
-      <span class="text-sm font-semibold">Formaster</span>
+      <span class="text-[13px] font-bold tracking-tight">Formaster</span>
     </div>
 
     <div class="flex gap-2 px-4 pb-3">
       <button
         type="button"
-        class="flex flex-1 items-center justify-center gap-1 rounded-lg bg-accent-600 px-2 py-1.5 text-xs font-semibold text-white transition active:scale-[0.97] hover:bg-accent-700"
+        class="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent-500 px-2 py-1.5 text-xs font-semibold text-accent-ink transition active:scale-[0.97] hover:bg-accent-600"
         onclick={createScript}
       >
         <PlusIcon size={13} weight="bold" />
@@ -179,7 +172,7 @@
       </button>
       <button
         type="button"
-        class="flex flex-1 items-center justify-center gap-1 rounded-lg border border-neutral-300 px-2 py-1.5 text-xs transition active:scale-[0.97] dark:border-neutral-700"
+        class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-hair px-2 py-1.5 text-xs transition active:scale-[0.97] hover:bg-surface-hover"
         onclick={() => (importDialogOpen = true)}
       >
         <UploadSimpleIcon size={13} weight="bold" />
@@ -188,30 +181,32 @@
     </div>
 
     {#if scripts.length > 0}
-      <div class="relative px-4 pb-3">
-        <MagnifyingGlassIcon size={13} class="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 text-neutral-400" />
-        <input
-          type="search"
-          placeholder="Search by name or URL…"
-          class="w-full rounded-lg border border-neutral-300 bg-transparent py-1.5 pl-7 pr-2 text-xs outline-none focus:border-accent-500 dark:border-neutral-700"
-          bind:value={searchQuery}
-        />
+      <div class="px-4 pb-3">
+        <div class="relative">
+          <MagnifyingGlassIcon size={12} class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3" />
+          <input
+            type="search"
+            placeholder="Search by name or URL…"
+            class="w-full rounded-lg border border-hair bg-surface py-1.5 pl-7 pr-2 text-xs text-ink-1 outline-none placeholder:text-ink-3 focus:border-accent-500"
+            bind:value={searchQuery}
+          />
+        </div>
       </div>
     {/if}
 
-    <nav class="space-y-1 px-2">
+    <nav class="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2">
       {#each filteredScripts as script (script.id)}
         <button
           type="button"
-          class="w-full truncate rounded-lg px-3 py-2 text-left text-sm transition {selectedId === script.id
-            ? 'bg-accent-50 text-accent-700 dark:bg-accent-500/10 dark:text-accent-400'
-            : 'hover:bg-neutral-100 dark:hover:bg-neutral-900'}"
+          class="w-full truncate rounded-lg px-3 py-2 text-left text-[12.5px] transition {selectedId === script.id
+            ? 'bg-accent-500/13 font-semibold text-accent-500'
+            : 'text-ink-2 hover:bg-surface-hover hover:text-ink-1'}"
           onclick={() => (selectedId = script.id)}
         >
           {script.name}
         </button>
       {:else}
-        <p class="px-3 py-2 text-xs text-neutral-500">
+        <p class="px-3 py-2 text-xs text-ink-3">
           {scripts.length === 0 ? 'No scripts yet.' : 'No scripts match your search.'}
         </p>
       {/each}
@@ -230,13 +225,16 @@
         />
       {/key}
     {:else}
-      <div class="flex h-full items-center justify-center text-sm text-neutral-500">
-        Select or create a script to get started.
-      </div>
+      <div class="flex h-full items-center justify-center text-sm text-ink-3">Select or create a script to get started.</div>
     {/if}
   </main>
 </div>
 
-<ImportDialog open={importDialogOpen} onImport={handleImportScript} onCancel={() => (importDialogOpen = false)} />
+<ImportDialog
+  open={importDialogOpen}
+  existingScripts={scripts}
+  onImport={handleImportScript}
+  onCancel={() => (importDialogOpen = false)}
+/>
 
 <ToastHost />

@@ -67,9 +67,3 @@ export function generatePassport(): string {
 function randomIntUpper(): number {
   return Math.floor(Math.random() * 26) + 65; // 'A'-'Z'
 }
-
-export function generateCep({ masked = true }: DocumentOptions = {}): string {
-  const raw = randomDigits(8).join('');
-  if (!masked) return raw;
-  return `${raw.slice(0, 5)}-${raw.slice(5)}`;
-}

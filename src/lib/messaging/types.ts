@@ -1,3 +1,4 @@
+import type { GeneratorRunContext } from '../generators';
 import type { FieldElementType, FormScript, SelectorCandidate } from '../schema/script';
 
 /** Runtime messages passed between background, content script, popup, and options. */
@@ -7,7 +8,23 @@ export type RuntimeMessage =
   | { type: 'picker/start-for-script'; scriptId: string; urlPatterns: string[] }
   | { type: 'fill/run'; script: FormScript }
   | { type: 'fill/result'; results: FillFieldResult[] }
-  | { type: 'scripts/refresh'; scriptId: string };
+  | { type: 'scripts/refresh'; scriptId: string }
+  | {
+      type: 'customGenerator/run';
+      code: string;
+      options?: Record<string, unknown>;
+      fields: Record<string, string | number | boolean>;
+      // Correlated-generator state (see GeneratorRunContext) accumulated so
+      // far in this fill run. Structured-cloned across the message boundary,
+      // so the background's response carries back whatever this call adds to
+      // it — content.ts merges that back into its own copy afterwards.
+      runContext: GeneratorRunContext;
+    };
+
+export interface CustomGeneratorRunResult {
+  value: string | number | boolean;
+  runContext: GeneratorRunContext;
+}
 
 export interface PickedField {
   selectors: SelectorCandidate[];

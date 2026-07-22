@@ -6,15 +6,19 @@
   import CursorClickIcon from 'phosphor-svelte/lib/CursorClickIcon';
   import DownloadSimpleIcon from 'phosphor-svelte/lib/DownloadSimpleIcon';
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon';
+  import HourglassIcon from 'phosphor-svelte/lib/HourglassIcon';
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
+  import SignOutIcon from 'phosphor-svelte/lib/SignOutIcon';
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
   import TimerIcon from 'phosphor-svelte/lib/TimerIcon';
+  import XIcon from 'phosphor-svelte/lib/XIcon';
   import CodeEditor from './CodeEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import DelayStepRow from './DelayStepRow.svelte';
   import FieldRow from './FieldRow.svelte';
+  import WaitForStepRow from './WaitForStepRow.svelte';
   import { fieldContextKey, type FieldValueContext } from '../lib/filler/fill-script';
-  import { runBuiltinGenerator } from '../lib/generators';
+  import { runBuiltinGenerator, type GeneratorRunContext } from '../lib/generators';
   import { runCustomCode } from '../lib/generators/quickjs-runner';
   import type { RuntimeMessage } from '../lib/messaging/types';
   import {
@@ -24,7 +28,10 @@
     type FieldMapping,
     type FormScript,
     type GeneratorRef,
+    type ScriptStep,
+    type WaitForStep,
   } from '../lib/schema/script';
+  import { getReturnTabId } from '../lib/storage/return-tab-store';
   import { pushToast } from '../lib/toast/toast-store.svelte';
 
   interface Props {
@@ -40,6 +47,9 @@
   // Local editable copy so navigating away without saving doesn't mutate storage.
   // `script` is itself a reactive $state proxy; $state.snapshot() resolves it to an
   // independent plain deep clone (structuredClone would throw on the proxy directly).
+  // Deliberately a one-time capture, not a $derived — this needs to be independently
+  // mutable, and the $effect below handles resyncing it when `script` genuinely changes.
+  // svelte-ignore state_referenced_locally
   let draft = $state<FormScript>($state.snapshot(script));
 
   // Tracks the updatedAt we ourselves last persisted, so the effect below can
@@ -48,6 +58,7 @@
   // "this script changed because we just saved it" — only the former should
   // resync the draft. A plain full remount on every save would also work,
   // but it wipes local UI state (open code panel, expanded selectors, etc).
+  // svelte-ignore state_referenced_locally
   let lastSyncedUpdatedAt = $state(script.updatedAt);
 
   $effect(() => {
@@ -110,6 +121,10 @@
     draft.steps[index] = step;
   }
 
+  function updateWaitForStep(index: number, step: WaitForStep): void {
+    draft.steps[index] = step;
+  }
+
   function moveStep(index: number, direction: -1 | 1): void {
     const target = index + direction;
     if (target < 0 || target >= draft.steps.length) return;
@@ -161,6 +176,18 @@
     draft.steps = [...draft.steps, { type: 'delay', id: crypto.randomUUID(), delayMs: 500 }];
   }
 
+  function addWaitForStep(): void {
+    const newStep: ScriptStep = {
+      type: 'waitFor',
+      id: crypto.randomUUID(),
+      selectors: [{ strategy: 'css', value: '#change-me', enabled: true }],
+      condition: 'enabled',
+      timeoutMs: 5000,
+      pollIntervalMs: 150,
+    };
+    draft.steps = [...draft.steps, newStep];
+  }
+
   // Lets the user write a field by hand instead of picking it from a live
   // page — the selector value starts as an obvious placeholder (never
   // empty: the schema requires a non-empty string, and an empty one would
@@ -187,41 +214,53 @@
       .filter(Boolean);
   }
 
-  async function resolveFieldValue(field: FieldMapping, context: FieldValueContext): Promise<string | number | boolean> {
+  async function resolveFieldValue(
+    field: FieldMapping,
+    context: FieldValueContext,
+    generatorRunContext: GeneratorRunContext,
+  ): Promise<string | number | boolean> {
     const ref: GeneratorRef = field.generator;
-    if (ref.kind === 'builtin') return runBuiltinGenerator(ref.id, ref.options);
+    if (ref.kind === 'builtin') return runBuiltinGenerator(ref.id, ref.options, generatorRunContext);
     if (ref.kind === 'fixed') return ref.value;
     const generator = draft.customGenerators.find((entry) => entry.id === ref.generatorId);
     if (!generator) throw new Error('No custom generator selected');
-    return runCustomCode(generator.code, undefined, context);
+    return runCustomCode(generator.code, undefined, context, generatorRunContext);
   }
 
-  /** Runs every field above this one first, so generators can read `fields.xyz` just like a real run. */
+  /**
+   * Runs every field above this one first, so generators can read `fields.xyz`
+   * just like a real run — and, via the shared `generatorRunContext`, so
+   * correlated builtins (cep/city/state/neighborhood) preview the same
+   * underlying address as the fields already previewed above them.
+   */
   async function previewGenerator(field: FieldMapping): Promise<string> {
     const index = draft.steps.findIndex((step) => step.type === 'field' && step.field.id === field.id);
     const context: FieldValueContext = {};
+    const generatorRunContext: GeneratorRunContext = {};
     for (let i = 0; i < index; i++) {
       const step = draft.steps[i];
       if (step.type !== 'field') continue;
       try {
-        context[fieldContextKey(step.field)] = await resolveFieldValue(step.field, context);
+        context[fieldContextKey(step.field)] = await resolveFieldValue(step.field, context, generatorRunContext);
       } catch {
         // A broken earlier field shouldn't block previewing this one; it's just absent from context.
       }
     }
-    const value = await resolveFieldValue(field, context);
+    const value = await resolveFieldValue(field, context, generatorRunContext);
     return String(value);
   }
 
-  async function save(): Promise<void> {
+  async function save(): Promise<boolean> {
     try {
       const saved = await onSave($state.snapshot(draft));
       lastSyncedUpdatedAt = saved.updatedAt;
       draft.updatedAt = saved.updatedAt;
       saveFlash = true;
       setTimeout(() => (saveFlash = false), 1500);
+      return true;
     } catch {
       // onSave already surfaced a toast explaining what's wrong.
+      return false;
     }
   }
 
@@ -230,6 +269,32 @@
       event.preventDefault();
       void save();
     }
+  }
+
+  /**
+   * Closes the tab this editor is running in and, if we know which tab was
+   * active when it was opened (set by whatever popup/background flow got us
+   * here — see `lib/storage/return-tab-store.ts`), switches back to it first.
+   * Falls back to a plain close if that tab is gone or was never recorded
+   * (e.g. the user opened the options URL by hand).
+   */
+  async function closeEditor(): Promise<void> {
+    const returnTabId = await getReturnTabId();
+    if (returnTabId != null) {
+      try {
+        await browser.tabs.update(returnTabId, { active: true });
+        const returnTab = await browser.tabs.get(returnTabId);
+        if (returnTab.windowId != null) await browser.windows.update(returnTab.windowId, { focused: true });
+      } catch {
+        // The original tab was closed in the meantime — nothing to switch back to.
+      }
+    }
+    const currentTab = await browser.tabs.getCurrent();
+    if (currentTab?.id != null) await browser.tabs.remove(currentTab.id);
+  }
+
+  async function saveAndClose(): Promise<void> {
+    if (await save()) await closeEditor();
   }
 
   function confirmDeleteScript(): void {
@@ -259,19 +324,22 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="flex h-full flex-col">
-  <div class="flex items-center justify-between gap-3 border-b border-neutral-200 px-6 py-4 dark:border-neutral-800">
-    <div class="group flex min-w-0 max-w-sm flex-1 items-center gap-1.5">
+  <div class="flex items-center justify-between gap-3 border-b border-hair px-6 py-4">
+    <div class="group relative flex min-w-0 max-w-sm flex-1 items-center">
       <input
-        class="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-lg font-semibold outline-none transition group-hover:bg-neutral-100 focus:bg-neutral-100 dark:group-hover:bg-neutral-900 dark:focus:bg-neutral-900"
+        class="min-w-0 flex-1 rounded-t-[5px] border-b border-dashed border-white/15 bg-transparent px-1.5 py-1 text-lg font-semibold text-ink-1 outline-none transition placeholder:text-ink-3 hover:border-white/30 hover:bg-surface-hover focus:border-solid focus:border-accent-500 focus:bg-surface-hover"
         bind:value={draft.name}
         placeholder="Script name"
       />
-      <PencilSimpleIcon size={13} class="shrink-0 text-neutral-400 opacity-0 transition group-hover:opacity-100" />
+      <PencilSimpleIcon
+        size={13}
+        class="pointer-events-none ml-1.5 shrink-0 text-ink-3 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
+      />
     </div>
     <div class="flex shrink-0 gap-2">
       <button
         type="button"
-        class="flex items-center gap-1.5 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm transition active:scale-[0.97] dark:border-neutral-700"
+        class="flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
         onclick={() => (showJsonView = !showJsonView)}
       >
         <BracketsCurlyIcon size={14} weight="bold" />
@@ -279,7 +347,7 @@
       </button>
       <button
         type="button"
-        class="flex items-center gap-1.5 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm transition active:scale-[0.97] dark:border-neutral-700"
+        class="flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
         onclick={() => onDuplicate($state.snapshot(draft))}
       >
         <CopySimpleIcon size={14} weight="bold" />
@@ -287,7 +355,7 @@
       </button>
       <button
         type="button"
-        class="flex items-center gap-1.5 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm transition active:scale-[0.97] dark:border-neutral-700"
+        class="flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
         onclick={() => onExport($state.snapshot(draft))}
       >
         <DownloadSimpleIcon size={14} weight="bold" />
@@ -295,7 +363,7 @@
       </button>
       <button
         type="button"
-        class="flex items-center gap-1.5 rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-600 transition active:scale-[0.97] dark:border-red-900 dark:text-red-400"
+        class="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-1.5 text-sm text-red-400 transition active:scale-[0.97] hover:bg-red-500/10"
         onclick={() => (confirmDeleteScriptOpen = true)}
       >
         <TrashIcon size={14} weight="bold" />
@@ -303,9 +371,9 @@
       </button>
       <button
         type="button"
-        class="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-semibold text-white transition active:scale-[0.97] {saveFlash
-          ? 'bg-emerald-600'
-          : 'bg-accent-600 hover:bg-accent-700'}"
+        class="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-semibold transition active:scale-[0.97] {saveFlash
+          ? 'bg-emerald-700 text-white'
+          : 'bg-accent-500 text-accent-ink hover:bg-accent-600'}"
         onclick={save}
       >
         {#if saveFlash}
@@ -315,6 +383,24 @@
           Save
         {/if}
       </button>
+      <div class="mx-0.5 w-px self-stretch bg-hair"></div>
+      <button
+        type="button"
+        class="flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
+        title="Close without saving"
+        onclick={closeEditor}
+      >
+        <XIcon size={14} weight="bold" />
+        Close
+      </button>
+      <button
+        type="button"
+        class="flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-1.5 text-sm font-semibold text-accent-ink transition active:scale-[0.97] hover:bg-accent-600"
+        onclick={saveAndClose}
+      >
+        <SignOutIcon size={14} weight="bold" />
+        Save & close
+      </button>
     </div>
   </div>
 
@@ -322,10 +408,12 @@
     <div class="min-h-0 space-y-6 overflow-y-auto px-6 py-4">
       <section>
         <div class="mb-2 flex items-center justify-between">
-          <label class="block text-xs font-medium text-neutral-500" for="url-patterns"> URL patterns (one per line) </label>
+          <label class="block text-[11px] font-semibold uppercase tracking-wider text-ink-3" for="url-patterns">
+            URL patterns (one per line)
+          </label>
           <button
             type="button"
-            class="flex items-center gap-1.5 rounded-md border border-dashed border-accent-400 px-2 py-1 text-xs font-medium text-accent-600 transition hover:bg-accent-50 dark:text-accent-400 dark:hover:bg-accent-500/10"
+            class="flex items-center gap-1.5 rounded-md border border-dashed border-accent-500/45 px-2 py-1 text-xs font-medium text-accent-500 transition hover:bg-accent-500/10"
             onclick={addFieldsFromPage}
           >
             <CursorClickIcon size={12} weight="bold" />
@@ -334,7 +422,7 @@
         </div>
         <textarea
           id="url-patterns"
-          class="w-full rounded-md border border-neutral-300 bg-transparent px-3 py-2 font-mono text-sm dark:border-neutral-700"
+          class="w-full rounded-lg border border-hair bg-surface px-3 py-2 font-mono text-sm text-ink-1 outline-none focus:border-accent-500"
           rows="2"
           value={draft.urlPatterns.join('\n')}
           oninput={(event) => updateUrlPatterns((event.currentTarget as HTMLTextAreaElement).value)}
@@ -343,32 +431,40 @@
 
       <section>
         <div class="mb-2 flex items-center justify-between">
-          <h2 class="text-sm font-semibold">
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider text-ink-3">
             Fields ({draft.steps.filter((step) => step.type === 'field').length})
           </h2>
           <div class="flex items-center gap-3">
             <button
               type="button"
-              class="flex items-center gap-1.5 text-xs font-medium text-neutral-500 transition hover:text-accent-600 dark:hover:text-accent-400"
+              class="flex items-center gap-1.5 text-xs font-medium text-ink-2 transition hover:text-accent-500"
               onclick={addManualField}
             >
               <PlusIcon size={13} weight="bold" />
-              + Add field
+              Add field
             </button>
             <button
               type="button"
-              class="flex items-center gap-1.5 text-xs font-medium text-neutral-500 transition hover:text-accent-600 dark:hover:text-accent-400"
+              class="flex items-center gap-1.5 text-xs font-medium text-ink-2 transition hover:text-accent-500"
               onclick={addDelayStep}
             >
               <TimerIcon size={13} weight="bold" />
-              + Add wait
+              Add wait
+            </button>
+            <button
+              type="button"
+              class="flex items-center gap-1.5 text-xs font-medium text-ink-2 transition hover:text-accent-500"
+              onclick={addWaitForStep}
+            >
+              <HourglassIcon size={13} weight="bold" />
+              Add conditional wait
             </button>
           </div>
         </div>
         {#if draft.steps.length === 0}
-          <p class="text-sm text-neutral-500">
-            No fields mapped yet. Use "Add fields from page" above, "+ Add field" to write one by hand, or "Map
-            fields on this page" from the popup.
+          <p class="text-sm text-ink-3">
+            No fields mapped yet. Use "Add fields from page" above, "Add field" to write one by hand, or "Map fields
+            on this page" from the popup.
           </p>
         {:else}
           <div class="space-y-2">
@@ -389,12 +485,22 @@
                   onCreateGenerator={() => createAndAssignGenerator(index)}
                   onFocusGenerator={focusGenerator}
                 />
-              {:else}
+              {:else if step.type === 'delay'}
                 <DelayStepRow
                   {step}
                   canMoveUp={index > 0}
                   canMoveDown={index < draft.steps.length - 1}
                   onChange={(updated) => updateDelayStep(index, updated)}
+                  onRemove={() => removeStep(index)}
+                  onMoveUp={() => moveStep(index, -1)}
+                  onMoveDown={() => moveStep(index, 1)}
+                />
+              {:else}
+                <WaitForStepRow
+                  {step}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < draft.steps.length - 1}
+                  onChange={(updated) => updateWaitForStep(index, updated)}
                   onRemove={() => removeStep(index)}
                   onMoveUp={() => moveStep(index, -1)}
                   onMoveDown={() => moveStep(index, 1)}
@@ -407,34 +513,37 @@
 
       <section>
         <div class="mb-2 flex items-center justify-between">
-          <h2 class="text-sm font-semibold">Custom generators</h2>
-          <button type="button" class="text-xs font-medium text-accent-600 hover:underline" onclick={addCustomGenerator}>
-            + New generator
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider text-ink-3">Custom generators</h2>
+          <button type="button" class="text-xs font-medium text-accent-500 hover:underline" onclick={addCustomGenerator}>
+            New generator
           </button>
         </div>
         {#if draft.customGenerators.length === 0}
-          <p class="text-sm text-neutral-500">
-            Write your own JS: <code class="font-mono">(helpers, options, fields) =&gt; value</code>. Runs sandboxed,
-            with access to the built-in generators via <code class="font-mono">helpers</code> and every field filled
-            earlier in this script via <code class="font-mono">fields</code> (e.g. <code class="font-mono"
-              >fields.firstName</code
-            >).
+          <p class="text-sm text-ink-3">
+            Write your own JS: <code class="font-mono text-ink-2">(helpers, options, fields) =&gt; value</code>. Runs
+            sandboxed, with access to the built-in generators via <code class="font-mono text-ink-2">helpers</code> and
+            every field filled earlier in this script via <code class="font-mono text-ink-2">fields</code> (e.g.
+            <code class="font-mono text-ink-2">fields.firstName</code>). <code class="font-mono text-ink-2">options</code>
+            is always an empty object today — there's no way yet to configure a custom generator's own options.
           </p>
         {:else}
           <div class="space-y-3">
             {#each draft.customGenerators as generator (generator.id)}
-              <div id={`generator-${generator.id}`} class="rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
+              <div id={`generator-${generator.id}`} class="rounded-xl bg-surface p-3">
                 <div class="mb-2 flex items-center justify-between gap-2">
-                  <div class="group flex min-w-0 flex-1 items-center gap-1.5">
+                  <div class="group relative flex min-w-0 flex-1 items-center">
                     <input
-                      class="min-w-0 flex-1 rounded-md bg-transparent px-1 py-0.5 text-sm font-medium outline-none transition group-hover:bg-neutral-100 focus:bg-neutral-100 dark:group-hover:bg-neutral-900 dark:focus:bg-neutral-900"
+                      class="min-w-0 flex-1 rounded-t-[5px] border-b border-dashed border-white/15 bg-transparent px-1 py-0.5 text-sm font-medium text-ink-1 outline-none transition hover:border-white/30 hover:bg-surface-hover focus:border-solid focus:border-accent-500 focus:bg-surface-hover"
                       bind:value={generator.name}
                     />
-                    <PencilSimpleIcon size={12} class="shrink-0 text-neutral-400 opacity-0 transition group-hover:opacity-100" />
+                    <PencilSimpleIcon
+                      size={12}
+                      class="pointer-events-none ml-1.5 shrink-0 text-ink-3 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
+                    />
                   </div>
                   <button
                     type="button"
-                    class="flex items-center gap-1 rounded-md p-1.5 text-xs text-neutral-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                    class="flex items-center gap-1 rounded-md p-1.5 text-xs text-ink-3 transition hover:bg-red-500/10 hover:text-red-400"
                     aria-label="Remove generator"
                     onclick={() => (confirmDeleteGeneratorId = generator.id)}
                   >
@@ -455,11 +564,11 @@
     </div>
 
     {#if showJsonView}
-      <div class="flex min-h-0 flex-col border-l border-neutral-200 dark:border-neutral-800">
+      <div class="flex min-h-0 flex-col border-l border-hair">
         {#if jsonError}
-          <p class="border-b border-red-900 bg-red-950/40 px-4 py-2 text-xs text-red-400">{jsonError}</p>
+          <p class="border-b border-hair bg-red-500/10 px-4 py-2 text-xs text-red-400">{jsonError}</p>
         {:else}
-          <p class="border-b border-neutral-200 px-4 py-2 text-xs text-neutral-500 dark:border-neutral-800">
+          <p class="border-b border-hair px-4 py-2 text-xs text-ink-3">
             Full script as code. Edit or paste here to update the form live.
           </p>
         {/if}

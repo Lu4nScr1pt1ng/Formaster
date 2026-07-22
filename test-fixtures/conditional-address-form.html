@@ -1,0 +1,227 @@
+<!--
+  Local test fixture for Formaster's `waitFor` step (conditional wait —
+  see src/lib/schema/script.ts `waitForStepSchema` and
+  src/lib/filler/fill-script.ts `waitForCondition()`).
+
+  Scenario: typing a CEP kicks off a simulated lookup; the "Neighborhood"
+  <select> stays disabled and EMPTY (no options besides the placeholder)
+  until that lookup resolves, then gets populated with the real options for
+  that CEP and enabled. This makes the test self-verifying without a human
+  watching the screen:
+
+    - A script that waits for #neighborhood to become "enabled" before
+      setting it will find the correct option and select it.
+    - A script that fills #neighborhood immediately (no wait) will find no
+      matching option yet — Formaster's setSelectValue() falls back to
+      picking a random *other* enabled option in that case — so the
+      submitted result will very likely show the wrong neighborhood.
+
+  So "did the wait work?" reduces to "does the submitted neighborhood match
+  the submitted CEP's known neighborhoods?" — check the JSON dump at the
+  bottom after submitting.
+
+  Design choices made specifically to keep this NOT FLAKY and FAST:
+    - The simulated lookup delay is a fixed constant (LOOKUP_DELAY_MS), no
+      randomness/jitter — every run waits exactly the same amount of time,
+      so a fixed `timeoutMs` on the waitFor step behaves predictably.
+    - It's kept short (350ms) so a full test run stays fast, but well above
+      one animation frame so it can never resolve "by accident" in the same
+      tick a naive (non-waiting) filler would read the field.
+    - The lookup fires on the CEP field's native `input` event as soon as 8
+      digits are present — Formaster's setNativeInputValue() (and a real
+      user's final keystroke) both dispatch `input` synchronously, so this
+      never depends on `blur`/`change` or any extra timing assumption.
+    - A monotonic `requestToken` guards against overlapping lookups (e.g.
+      the CEP field being edited again mid-lookup): only the most recent
+      request is allowed to apply its result, so there's no race that could
+      make a run flaky if a script or user touches the field twice.
+    - The CEP -> {city, state, neighborhoods} table below intentionally
+      mirrors src/lib/generators/address-br.ts's prefixes, so a script using
+      Formaster's own correlated `cep`/`addressCity`/`addressState`/
+      `addressNeighborhood` builtin generators round-trips cleanly here.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Conditional address form fixture</title>
+<style>
+  :root { color-scheme: light; --ink: #1f2430; --muted: #667; --border: #dde3ea; --accent: #2563eb; --bg: #f4f6f9; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); padding: 2rem 1rem;
+  }
+  .card { width: 100%; max-width: 480px; background: #fff; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.06), 0 12px 28px rgba(0,0,0,.08); padding: 2rem; }
+  h1 { font-size: 18px; margin: 0 0 .25rem; }
+  .desc { color: var(--muted); font-size: 13px; margin: 0 0 1.5rem; }
+  label { display: block; font-size: 13px; font-weight: 500; margin: 1rem 0 .375rem; }
+  label:first-of-type { margin-top: 0; }
+  input, select {
+    width: 100%; padding: .625rem .75rem; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 14px; font-family: inherit; color: var(--ink); background: #fff; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+  input:disabled, select:disabled { background: #f1f3f6; color: #99a; cursor: not-allowed; }
+  .status { display: flex; align-items: center; gap: .4rem; margin-top: .375rem; font-size: 12px; color: var(--muted); min-height: 1.1rem; }
+  .status .dot { width: 6px; height: 6px; border-radius: 50%; background: #cbd3dd; }
+  .status.busy .dot { background: #f59e0b; }
+  .status.done .dot { background: #22c55e; }
+  .status.unknown .dot { background: #ef4444; }
+  button.submit {
+    width: 100%; margin-top: 1.5rem; padding: .75rem 1rem; background: var(--accent); color: #fff;
+    border: none; border-radius: 6px; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button.submit:hover { background: #1d4ed8; }
+  pre.result {
+    margin-top: 1rem; padding: .75rem; border-radius: 6px; background: #0b1020; color: #d7e2ff;
+    font-size: 12px; line-height: 1.5; display: none; overflow-x: auto;
+  }
+  pre.result.show { display: block; }
+  pre.result .pass { color: #6ee7b7; }
+  pre.result .fail { color: #fca5a5; }
+</style>
+</head>
+<body>
+  <form class="card" id="address-form" autocomplete="off">
+    <h1>Address (CEP-gated)</h1>
+    <p class="desc">Neighborhood stays disabled and empty until the CEP lookup resolves — waiting correctly is the only way to select the right option.</p>
+
+    <label for="cep">CEP</label>
+    <input type="text" id="cep" name="cep" placeholder="00000-000" inputmode="numeric" maxlength="9" required />
+    <p class="status" id="cep-status"><span class="dot"></span><span id="cep-status-text">Waiting for CEP…</span></p>
+
+    <label for="city">City</label>
+    <input type="text" id="city" name="city" disabled />
+
+    <label for="state">State</label>
+    <input type="text" id="state" name="state" disabled />
+
+    <label for="neighborhood">Neighborhood</label>
+    <select id="neighborhood" name="neighborhood" disabled required>
+      <option value="">Fill CEP first…</option>
+    </select>
+
+    <button type="submit" class="submit">Submit</button>
+    <pre class="result" id="result"></pre>
+  </form>
+
+<script>
+(function () {
+  "use strict";
+
+  // Fixed, deterministic — never randomized — see the header comment.
+  var LOOKUP_DELAY_MS = 350;
+
+  // Mirrors src/lib/generators/address-br.ts's ADDRESS_BR_CITIES prefixes.
+  var CEP_TABLE = {
+    "01310": { city: "Sao Paulo", state: "SP", neighborhoods: ["Centro", "Bela Vista", "Pinheiros"] },
+    "22041": { city: "Rio de Janeiro", state: "RJ", neighborhoods: ["Copacabana", "Centro", "Tijuca"] },
+    "30130": { city: "Belo Horizonte", state: "MG", neighborhoods: ["Centro", "Savassi", "Lourdes"] },
+    "80010": { city: "Curitiba", state: "PR", neighborhoods: ["Centro", "Batel", "Agua Verde"] },
+    "90010": { city: "Porto Alegre", state: "RS", neighborhoods: ["Centro Historico", "Moinhos de Vento", "Cidade Baixa"] },
+    "40015": { city: "Salvador", state: "BA", neighborhoods: ["Centro", "Barra", "Pituba"] },
+    "50010": { city: "Recife", state: "PE", neighborhoods: ["Centro", "Boa Viagem", "Casa Forte"] },
+    "60010": { city: "Fortaleza", state: "CE", neighborhoods: ["Centro", "Meireles", "Aldeota"] },
+    "70040": { city: "Brasilia", state: "DF", neighborhoods: ["Asa Sul", "Asa Norte", "Lago Sul"] },
+    "69005": { city: "Manaus", state: "AM", neighborhoods: ["Centro", "Adrianopolis", "Ponta Negra"] }
+  };
+
+  var cepInput = document.getElementById("cep");
+  var cityInput = document.getElementById("city");
+  var stateInput = document.getElementById("state");
+  var neighborhoodSelect = document.getElementById("neighborhood");
+  var statusEl = document.getElementById("cep-status");
+  var statusText = document.getElementById("cep-status-text");
+
+  var requestToken = 0;
+
+  function setStatus(mode, text) {
+    statusEl.className = "status" + (mode ? " " + mode : "");
+    statusText.textContent = text;
+  }
+
+  function lockDependentFields() {
+    cityInput.value = "";
+    stateInput.value = "";
+    neighborhoodSelect.innerHTML = '<option value="">Fill CEP first…</option>';
+    neighborhoodSelect.disabled = true;
+  }
+
+  function resolveAddress(digits) {
+    var prefix = digits.slice(0, 5);
+    return CEP_TABLE[prefix] || null;
+  }
+
+  cepInput.addEventListener("input", function () {
+    var digits = cepInput.value.replace(/\D/g, "").slice(0, 8);
+    cepInput.value = digits.length > 5 ? digits.slice(0, 5) + "-" + digits.slice(5) : digits;
+
+    lockDependentFields();
+
+    if (digits.length !== 8) {
+      setStatus("", "Waiting for CEP…");
+      return;
+    }
+
+    var myToken = ++requestToken;
+    var startedAt = performance.now();
+    setStatus("busy", "Looking up " + digits + "…");
+
+    setTimeout(function () {
+      if (myToken !== requestToken) return; // superseded by a newer lookup — ignore this one
+
+      var elapsed = Math.round(performance.now() - startedAt);
+      var address = resolveAddress(digits);
+
+      if (!address) {
+        setStatus("unknown", "No match for " + digits + " (" + elapsed + "ms)");
+        return;
+      }
+
+      cityInput.value = address.city;
+      stateInput.value = address.state;
+
+      neighborhoodSelect.innerHTML = "";
+      address.neighborhoods.forEach(function (name) {
+        var option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        neighborhoodSelect.appendChild(option);
+      });
+      neighborhoodSelect.disabled = false;
+
+      setStatus("done", "Found " + address.city + "/" + address.state + " (" + elapsed + "ms)");
+    }, LOOKUP_DELAY_MS);
+  });
+
+  document.getElementById("address-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var digits = cepInput.value.replace(/\D/g, "");
+    var address = resolveAddress(digits);
+    var submittedNeighborhood = neighborhoodSelect.value;
+    var expected = address ? address.neighborhoods : [];
+    var waitedCorrectly = address !== null && expected.indexOf(submittedNeighborhood) !== -1;
+
+    var payload = {
+      cep: cepInput.value,
+      city: cityInput.value,
+      state: stateInput.value,
+      neighborhood: submittedNeighborhood,
+      expectedNeighborhoods: expected,
+      waitedCorrectly: waitedCorrectly
+    };
+
+    var result = document.getElementById("result");
+    var verdict = waitedCorrectly
+      ? '<span class="pass">PASS — neighborhood matches the resolved CEP, the wait worked.</span>'
+      : '<span class="fail">FAIL — neighborhood does not match the resolved CEP; it was set before (or without) the lookup finishing.</span>';
+    result.innerHTML = verdict + "\n" + JSON.stringify(payload, null, 2);
+    result.classList.add("show");
+  });
+})();
+</script>
+</body>
+</html>
