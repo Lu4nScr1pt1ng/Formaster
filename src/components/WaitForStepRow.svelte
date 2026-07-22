@@ -8,6 +8,7 @@
   import SquareIcon from 'phosphor-svelte/lib/SquareIcon';
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
   import { waitConditionSchema, type SelectorCandidate, type WaitForStep } from '../lib/schema/script';
 
   const SELECTOR_STRATEGIES: SelectorCandidate['strategy'][] = [
@@ -18,6 +19,10 @@
     'css',
     'xpath',
   ];
+  const SELECTOR_STRATEGY_OPTIONS: SearchableSelectOption[] = SELECTOR_STRATEGIES.map((strategy) => ({
+    value: strategy,
+    label: strategy,
+  }));
 
   const WAIT_CONDITIONS = waitConditionSchema.options;
 
@@ -27,6 +32,10 @@
     exists: 'appears in the page',
     checked: 'becomes checked',
   };
+  const CONDITION_OPTIONS: SearchableSelectOption[] = WAIT_CONDITIONS.map((condition) => ({
+    value: condition,
+    label: CONDITION_LABELS[condition],
+  }));
 
   interface Props {
     step: WaitForStep;
@@ -114,18 +123,7 @@
     <HourglassIcon size={15} class="shrink-0 text-ink-3" />
     <span class="text-sm font-medium text-ink-2">Wait until element</span>
 
-    <div class="relative shrink-0">
-      <select
-        class="appearance-none rounded-md border border-hair bg-canvas py-1 pl-2 pr-6 text-xs text-ink-1 outline-none"
-        value={step.condition}
-        onchange={(event) => setCondition((event.currentTarget as HTMLSelectElement).value)}
-      >
-        {#each WAIT_CONDITIONS as condition (condition)}
-          <option value={condition}>{CONDITION_LABELS[condition]}</option>
-        {/each}
-      </select>
-      <CaretDownIcon size={11} class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-ink-3" />
-    </div>
+    <SearchableSelect ariaLabel="Wait condition" value={step.condition} options={CONDITION_OPTIONS} onChange={setCondition} />
 
     <button
       type="button"
@@ -203,18 +201,13 @@
       {/each}
 
       <div class="mt-1.5 flex items-center gap-1.5 border-t border-hair pt-1.5">
-        <div class="relative shrink-0">
-          <select
-            class="appearance-none rounded bg-transparent py-0.5 pl-1 pr-4 font-mono text-[11px] uppercase text-ink-2 outline-none"
-            aria-label="New selector strategy"
-            bind:value={newSelectorStrategy}
-          >
-            {#each SELECTOR_STRATEGIES as strategy (strategy)}
-              <option value={strategy}>{strategy}</option>
-            {/each}
-          </select>
-          <CaretDownIcon size={9} class="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-ink-3" />
-        </div>
+        <SearchableSelect
+          compact
+          ariaLabel="New selector strategy"
+          value={newSelectorStrategy}
+          options={SELECTOR_STRATEGY_OPTIONS}
+          onChange={(strategy) => (newSelectorStrategy = strategy as SelectorCandidate['strategy'])}
+        />
         <input
           class="min-w-0 flex-1 rounded border border-dashed border-white/20 bg-transparent px-1.5 py-0.5 font-mono text-[11px] text-ink-1 outline-none placeholder:text-ink-3"
           placeholder="Type a value to match this by…"

@@ -10,6 +10,7 @@
   import SquareIcon from 'phosphor-svelte/lib/SquareIcon';
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
   import { BUILTIN_GENERATOR_LABELS } from '../lib/generators';
   import {
     fieldElementTypeSchema,
@@ -29,8 +30,22 @@
     'css',
     'xpath',
   ];
+  const SELECTOR_STRATEGY_OPTIONS: SearchableSelectOption[] = SELECTOR_STRATEGIES.map((strategy) => ({
+    value: strategy,
+    label: strategy,
+  }));
 
   const FIELD_ELEMENT_TYPES = fieldElementTypeSchema.options;
+  const FIELD_ELEMENT_TYPE_OPTIONS: SearchableSelectOption[] = FIELD_ELEMENT_TYPES.map((type) => ({
+    value: type,
+    label: type,
+  }));
+
+  const GENERATOR_KIND_OPTIONS: SearchableSelectOption[] = [
+    { value: 'builtin', label: 'Built-in generator' },
+    { value: 'fixed', label: 'Fixed value' },
+    { value: 'custom', label: 'Custom script' },
+  ];
 
   const NEW_GENERATOR_VALUE = '__new__';
 
@@ -79,6 +94,13 @@
   let newSelectorValue = $state('');
 
   const builtinOptions = Object.entries(BUILTIN_GENERATOR_LABELS) as [BuiltinGeneratorId, string][];
+  const builtinSelectOptions: SearchableSelectOption[] = builtinOptions.map(([id, label]) => ({ value: id, label }));
+
+  const customGeneratorOptions = $derived<SearchableSelectOption[]>([
+    ...(customGenerators.length === 0 ? [{ value: '', label: 'No custom generators yet' }] : []),
+    ...customGenerators.map((generator) => ({ value: generator.id, label: generator.name })),
+    { value: NEW_GENERATOR_VALUE, label: '+ New generator…' },
+  ]);
 
   function setGeneratorKind(kind: GeneratorRef['kind']): void {
     let generator: GeneratorRef;
@@ -183,20 +205,13 @@
       </button>
     </div>
 
-    <div class="relative shrink-0">
-      <select
-        class="appearance-none rounded-md bg-surface-hover py-0.5 pl-1.5 pr-4 font-mono text-[10px] uppercase tracking-wide text-ink-2 outline-none"
-        aria-label="Field type"
-        value={field.elementType}
-        onchange={(event) =>
-          onChange({ ...field, elementType: (event.currentTarget as HTMLSelectElement).value as FieldElementType })}
-      >
-        {#each FIELD_ELEMENT_TYPES as type (type)}
-          <option value={type}>{type}</option>
-        {/each}
-      </select>
-      <CaretDownIcon size={8} class="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-ink-3" />
-    </div>
+    <SearchableSelect
+      compact
+      ariaLabel="Field type"
+      value={field.elementType}
+      options={FIELD_ELEMENT_TYPE_OPTIONS}
+      onChange={(elementType) => onChange({ ...field, elementType: elementType as FieldElementType })}
+    />
 
     <div class="group relative flex min-w-0 flex-1 items-center">
       <input
@@ -285,18 +300,13 @@
       {/each}
 
       <div class="mt-1.5 flex items-center gap-1.5 border-t border-hair pt-1.5">
-        <div class="relative shrink-0">
-          <select
-            class="appearance-none rounded bg-transparent py-0.5 pl-1 pr-4 font-mono text-[11px] uppercase text-ink-2 outline-none"
-            aria-label="New selector strategy"
-            bind:value={newSelectorStrategy}
-          >
-            {#each SELECTOR_STRATEGIES as strategy (strategy)}
-              <option value={strategy}>{strategy}</option>
-            {/each}
-          </select>
-          <CaretDownIcon size={9} class="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-ink-3" />
-        </div>
+        <SearchableSelect
+          compact
+          ariaLabel="New selector strategy"
+          value={newSelectorStrategy}
+          options={SELECTOR_STRATEGY_OPTIONS}
+          onChange={(strategy) => (newSelectorStrategy = strategy as SelectorCandidate['strategy'])}
+        />
         <input
           class="min-w-0 flex-1 rounded border border-dashed border-white/20 bg-transparent px-1.5 py-0.5 font-mono text-[11px] text-ink-1 outline-none placeholder:text-ink-3"
           placeholder="Type a value to match this by…"
@@ -316,32 +326,20 @@
   {/if}
 
   <div class="mt-2.5 flex flex-wrap items-center gap-2">
-    <div class="relative">
-      <select
-        class="appearance-none rounded-md border border-hair bg-canvas py-1 pl-2 pr-6 text-xs text-ink-1 outline-none"
-        value={field.generator.kind}
-        onchange={(event) => setGeneratorKind((event.currentTarget as HTMLSelectElement).value as GeneratorRef['kind'])}
-      >
-        <option value="builtin">Built-in generator</option>
-        <option value="fixed">Fixed value</option>
-        <option value="custom">Custom script</option>
-      </select>
-      <CaretDownIcon size={11} class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-ink-3" />
-    </div>
+    <SearchableSelect
+      ariaLabel="Generator kind"
+      value={field.generator.kind}
+      options={GENERATOR_KIND_OPTIONS}
+      onChange={(kind) => setGeneratorKind(kind as GeneratorRef['kind'])}
+    />
 
     {#if field.generator.kind === 'builtin'}
-      <div class="relative">
-        <select
-          class="appearance-none rounded-md border border-hair bg-canvas py-1 pl-2 pr-6 text-xs text-ink-1 outline-none"
-          value={field.generator.id}
-          onchange={(event) => setBuiltinId((event.currentTarget as HTMLSelectElement).value as BuiltinGeneratorId)}
-        >
-          {#each builtinOptions as [id, label] (id)}
-            <option value={id}>{label}</option>
-          {/each}
-        </select>
-        <CaretDownIcon size={11} class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-ink-3" />
-      </div>
+      <SearchableSelect
+        ariaLabel="Built-in generator"
+        value={field.generator.id}
+        options={builtinSelectOptions}
+        onChange={(id) => setBuiltinId(id as BuiltinGeneratorId)}
+      />
     {:else if field.generator.kind === 'fixed'}
       <input
         class="rounded-md border border-hair bg-canvas px-2 py-1 text-xs text-ink-1 outline-none focus:border-accent-500"
@@ -349,22 +347,12 @@
         oninput={(event) => setFixedValue((event.currentTarget as HTMLInputElement).value)}
       />
     {:else}
-      <div class="relative">
-        <select
-          class="appearance-none rounded-md border border-hair bg-canvas py-1 pl-2 pr-6 text-xs text-ink-1 outline-none"
-          value={field.generator.generatorId}
-          onchange={(event) => setCustomId((event.currentTarget as HTMLSelectElement).value)}
-        >
-          {#if customGenerators.length === 0}
-            <option value="">No custom generators yet</option>
-          {/if}
-          {#each customGenerators as generator (generator.id)}
-            <option value={generator.id}>{generator.name}</option>
-          {/each}
-          <option value={NEW_GENERATOR_VALUE}>+ New generator…</option>
-        </select>
-        <CaretDownIcon size={11} class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-ink-3" />
-      </div>
+      <SearchableSelect
+        ariaLabel="Custom generator"
+        value={field.generator.generatorId}
+        options={customGeneratorOptions}
+        onChange={setCustomId}
+      />
       {#if field.generator.generatorId}
         <button
           type="button"
