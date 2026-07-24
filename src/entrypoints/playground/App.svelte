@@ -12,6 +12,7 @@
   import { fillScript, type FieldValueContext, type FillResult } from '../../lib/filler/fill-script';
   import type { GeneratorRunContext } from '../../lib/generators';
   import { runCustomCode } from '../../lib/generators/quickjs-runner';
+  import { initContextMenuFill } from '../../lib/picker/context-menu-fill';
   import { buildPlaygroundScript } from '../../lib/playground/seed-script';
   import { duplicateScript, formScriptSchema, formatValidationError, type FormScript } from '../../lib/schema/script';
   import { clearPlaygroundScriptId, getPlaygroundScriptId, setPlaygroundScriptId } from '../../lib/storage/playground-store';
@@ -27,14 +28,24 @@
   let running = $state(false);
   let results = $state<FillResult[] | null>(null);
 
-  onMount(async () => {
-    const playgroundId = await getPlaygroundScriptId();
-    const existing = playgroundId ? await getScript(playgroundId) : undefined;
-    if (existing) {
-      script = existing;
-    } else {
-      await seedExampleScript();
-    }
+  onMount(() => {
+    // Content scripts (content.ts) never run on chrome-extension:// pages,
+    // including this one — the Playground has to wire up "Fill this field"
+    // itself to get the same right-click behavior its demo form otherwise
+    // couldn't have.
+    const disposeContextMenuFill = initContextMenuFill();
+
+    (async () => {
+      const playgroundId = await getPlaygroundScriptId();
+      const existing = playgroundId ? await getScript(playgroundId) : undefined;
+      if (existing) {
+        script = existing;
+      } else {
+        await seedExampleScript();
+      }
+    })();
+
+    return disposeContextMenuFill;
   });
 
   async function seedExampleScript(): Promise<void> {

@@ -2,6 +2,7 @@ import type { ExistingPickedField, PickedField } from '../messaging/types';
 import { resolveSelectorCandidates } from '../selector/resolve-selector';
 import { generateSelectorCandidates } from '../selector/generate-selector';
 import { detectElementType } from './detect-element-type';
+import { detectGeneratorForElement } from './detect-generator';
 
 const HOST_ID = 'formaster-picker-root';
 
@@ -233,6 +234,7 @@ export class PickerOverlay {
       selectors: generateSelectorCandidates(target),
       elementType: detectElementType(target),
       label: inferLabel(target),
+      suggestedGenerator: detectGeneratorForElement(target) ?? undefined,
     };
     this.mapElement(target, field);
   };
@@ -299,7 +301,9 @@ export class PickerOverlay {
 function describeElement(element: Element): string {
   const tag = element.tagName.toLowerCase();
   const type = element.getAttribute('type');
-  return type ? `${tag}[type=${type}]` : tag;
+  const base = type ? `${tag}[type=${type}]` : tag;
+  const detected = detectGeneratorForElement(element);
+  return detected ? `${base} → ${detected.id}` : base;
 }
 
 function inferLabel(element: Element): string | undefined {

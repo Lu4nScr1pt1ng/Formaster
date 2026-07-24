@@ -70,6 +70,16 @@ export async function simulateTyping(element: HTMLElement, value: string): Promi
   element.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
   element.click();
 
+  // Clear whatever's already there first — without this, running the same
+  // fill twice (or "Fill this field" a second time) appends onto the old
+  // value instead of replacing it, e.g. "BrazilBrazil" instead of "Brazil".
+  if ('value' in element) {
+    (element as unknown as { value: string }).value = '';
+  } else {
+    element.textContent = '';
+  }
+  element.dispatchEvent(new InputEvent('input', { bubbles: true }));
+
   for (const char of value) {
     element.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
     if ('value' in element) {

@@ -13,11 +13,10 @@
   import { browser } from 'wxt/browser';
   import BrandIcon from '../../components/BrandIcon.svelte';
   import type { FillFieldResult, RuntimeMessage } from '../../lib/messaging/types';
-  import type { FormScript } from '../../lib/schema/script';
-  import { setDraft } from '../../lib/storage/draft-store';
+  import { createEmptyScript, type FormScript } from '../../lib/schema/script';
   import { setReturnTabId } from '../../lib/storage/return-tab-store';
-  import { listScripts } from '../../lib/storage/scripts-store';
-  import { matchesAnyPattern } from '../../lib/url-match';
+  import { listScripts, saveScript } from '../../lib/storage/scripts-store';
+  import { matchesAnyPattern, suggestScriptTarget } from '../../lib/url-match';
 
   type RunState = 'idle' | 'running' | 'done' | 'error';
 
@@ -83,13 +82,14 @@
     await browser.runtime.openOptionsPage();
   }
 
-  // Same "unsaved draft" hand-off the picker flow uses (see options/App.svelte's
-  // onMount) — just with no picked fields, so it lands on a blank script
-  // already scoped to this page's URL pattern instead of "*://*/*".
+  // A blank, saved script scoped to this page's URL pattern instead of
+  // "*://*/*" — saved for real (not stashed as a draft for the options tab
+  // to notice) so the ?script= deep link below always finds it immediately.
   async function createScriptForThisPage(): Promise<void> {
     if (activeTabId != null) await setReturnTabId(activeTabId);
-    await setDraft({ pageUrl: currentUrl, fields: [] });
-    await browser.tabs.create({ url: browser.runtime.getURL('/options.html') });
+    const { name, urlPattern } = suggestScriptTarget(currentUrl);
+    const script = await saveScript(createEmptyScript(name, urlPattern));
+    await browser.tabs.create({ url: browser.runtime.getURL(`/options.html?script=${script.id}`) });
     window.close();
   }
 

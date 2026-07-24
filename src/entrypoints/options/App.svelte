@@ -19,11 +19,9 @@
     formatValidationError,
     type FormScript,
   } from '../../lib/schema/script';
-  import { clearDraft, getDraft } from '../../lib/storage/draft-store';
   import { setReturnTabId } from '../../lib/storage/return-tab-store';
   import { deleteScript, exportScript, listScripts, saveScript } from '../../lib/storage/scripts-store';
   import { pushToast } from '../../lib/toast/toast-store.svelte';
-  import { suggestScriptTarget } from '../../lib/url-match';
 
   let scripts = $state<FormScript[]>([]);
   let selectedId = $state<string | null>(null);
@@ -55,38 +53,20 @@
   onMount(async () => {
     scripts = await listScripts();
 
-    const draft = await getDraft();
-    if (draft) {
-      const { name, urlPattern } = suggestScriptTarget(draft.pageUrl);
-      const script = createEmptyScript(name, urlPattern);
-      script.steps = draft.fields.map((field) => ({
-        type: 'field',
-        field: {
-          id: crypto.randomUUID(),
-          label: field.label,
-          selectors: field.selectors,
-          elementType: field.elementType,
-          generator: { kind: 'fixed', value: '' },
-        },
-      }));
-      scripts = [...scripts, script];
-      selectedId = script.id;
-      await clearDraft();
-    } else {
-      // Deep link from the popup's "Edit" button: ?script=<id>
-      const requestedId = new URLSearchParams(location.search).get('script');
-      if (requestedId && scripts.some((script) => script.id === requestedId)) {
-        selectedId = requestedId;
-      } else if (scripts.length > 0) {
-        selectedId = scripts[0].id;
-      }
+    // Deep link from the popup's "Edit" button, "Create empty script for
+    // this page", or a picker session finishing while no options tab was
+    // open yet: ?script=<id>. Picker-finished scripts always exist in
+    // storage by the time this runs — background.ts saves them for real
+    // before ever creating or focusing an options tab.
+    const requestedId = new URLSearchParams(location.search).get('script');
+    if (requestedId && scripts.some((script) => script.id === requestedId)) {
+      selectedId = requestedId;
+    } else if (scripts.length > 0) {
+      selectedId = scripts[0].id;
     }
 
-    // Registered unconditionally (not just in the no-draft branch above) —
-    // this tab needs to hear "scripts/refresh" for as long as it's open,
-    // regardless of how it was first opened (e.g. a script created from a
-    // draft here today still needs to live-update later from "Add fields
-    // from page" run from this same tab).
+    // A picker session can also finish while this tab is already open —
+    // background.ts broadcasts this instead of relying on a fresh mount.
     browser.runtime.onMessage.addListener((message: RuntimeMessage) => {
       if (message.type === 'scripts/refresh') {
         void refreshAndSelect(message.scriptId);

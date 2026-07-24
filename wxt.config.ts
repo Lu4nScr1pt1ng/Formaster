@@ -13,7 +13,7 @@ export default defineConfig({
     name: 'Formaster',
     description:
       'Automatic form filling with mocked data, visual field mapping, and programmable per-site scripts',
-    permissions: ['storage', 'tabs'],
+    permissions: ['storage', 'tabs', 'contextMenus'],
     // Options/popup pages run custom generators through a QuickJS WASM VM
     // (see src/lib/generators/quickjs-runner.ts) for the live preview.
     // Compiling WASM needs 'wasm-unsafe-eval' explicitly — Chrome does NOT

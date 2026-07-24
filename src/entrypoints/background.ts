@@ -6,16 +6,53 @@ import type {
   PickedField,
   RuntimeMessage,
 } from '../lib/messaging/types';
-import { setDraft } from '../lib/storage/draft-store';
+import { generatorRefFromSuggestion } from '../lib/picker/detect-generator';
 import { clearPendingPickerScriptId, getPendingPickerScriptId, setPendingPickerScriptId } from '../lib/storage/pending-picker-store';
 import { setReturnTabId } from '../lib/storage/return-tab-store';
 import { getScript, listScripts, saveScript } from '../lib/storage/scripts-store';
-import { matchesAnyPattern, patternToNavigableUrl } from '../lib/url-match';
+import { createEmptyScript, type FormScript, type ScriptStep } from '../lib/schema/script';
+import { matchesAnyPattern, patternToNavigableUrl, suggestScriptTarget } from '../lib/url-match';
 
 const MATCH_BADGE_COLOR = '#eea63c';
 const RESULT_BADGE_COLOR = '#10b981';
+const FILL_FIELD_MENU_ID = 'formaster-fill-field';
+const RUN_SCRIPT_MENU_ID = 'formaster-run-script';
 
 export default defineBackground(() => {
+  // `onInstalled` only fires on an actual install/update/browser-update, not
+  // on every service-worker wake — the right place to register context menu
+  // items once. `removeAll()` first makes this idempotent regardless
+  // (dev-mode extension reloads have been known to trigger it more than
+  // once), instead of throwing on a duplicate id.
+  browser.runtime.onInstalled.addListener(async () => {
+    await browser.contextMenus.removeAll();
+    // No "Formaster:" prefix on either title — the browser already groups
+    // an extension's context-menu items under its own name/icon, so
+    // repeating it here would just be noise.
+    browser.contextMenus.create({
+      id: FILL_FIELD_MENU_ID,
+      title: 'Fill this field',
+      contexts: ['editable'],
+    });
+    browser.contextMenus.create({
+      id: RUN_SCRIPT_MENU_ID,
+      title: 'Run script for this page',
+      // Not scoped to 'editable' like the item above — running a script is a
+      // whole-page action, not tied to whatever specific element was
+      // right-clicked, so it should show up anywhere on the page.
+      contexts: ['all'],
+    });
+  });
+
+  browser.contextMenus.onClicked.addListener((info, tab) => {
+    if (tab?.id == null) return;
+    if (info.menuItemId === FILL_FIELD_MENU_ID) {
+      void browser.tabs.sendMessage(tab.id, { type: 'contextmenu/fill-field' } satisfies RuntimeMessage);
+    } else if (info.menuItemId === RUN_SCRIPT_MENU_ID) {
+      void handleRunFirstMatchingScript(tab.id, tab.url);
+    }
+  });
+
   browser.runtime.onMessage.addListener((message: RuntimeMessage, sender) => {
     if (message.type === 'picker/finished') {
       void handlePickerFinished(message.pageUrl, message.fields, message.removedFieldIds, sender.tab?.id);
@@ -108,6 +145,26 @@ export default defineBackground(() => {
     });
   }
 
+  function fieldsToSteps(fields: PickedField[]): ScriptStep[] {
+    return fields.map((field) => ({
+      type: 'field' as const,
+      field: {
+        id: crypto.randomUUID(),
+        label: field.label,
+        selectors: field.selectors,
+        elementType: field.elementType,
+        generator: generatorRefFromSuggestion(field.suggestedGenerator),
+      },
+    }));
+  }
+
+  function buildNewScriptFromFields(pageUrl: string, fields: PickedField[]): FormScript {
+    const { name, urlPattern } = suggestScriptTarget(pageUrl);
+    const script = createEmptyScript(name, urlPattern);
+    script.steps = fieldsToSteps(fields);
+    return script;
+  }
+
   async function handlePickerFinished(
     pageUrl: string,
     fields: PickedField[],
@@ -119,53 +176,49 @@ export default defineBackground(() => {
     if (sourceTabId != null) await setReturnTabId(sourceTabId);
 
     const pendingScriptId = await getPendingPickerScriptId();
+    let script: FormScript | undefined;
     if (pendingScriptId) {
       await clearPendingPickerScriptId();
-      const script = await getScript(pendingScriptId);
+      script = await getScript(pendingScriptId);
       if (script) {
         const remainingSteps =
           removedFieldIds && removedFieldIds.length > 0
             ? script.steps.filter((step) => step.type !== 'field' || !removedFieldIds.includes(step.field.id))
             : script.steps;
-        script.steps = [
-          ...remainingSteps,
-          ...fields.map((field) => ({
-            type: 'field' as const,
-            field: {
-              id: crypto.randomUUID(),
-              label: field.label,
-              selectors: field.selectors,
-              elementType: field.elementType,
-              generator: { kind: 'fixed' as const, value: '' },
-            },
-          })),
-        ];
-        await saveScript(script);
-        await focusOrOpenOptions(pendingScriptId);
-        return;
+        script.steps = [...remainingSteps, ...fieldsToSteps(fields)];
       }
+      // else: the script this picker session was appending to got deleted
+      // while picking — fall through and create a fresh one instead of
+      // silently losing the fields the user just picked.
     }
+    script ??= buildNewScriptFromFields(pageUrl, fields);
 
-    await setDraft({ pageUrl, fields });
-    await focusOrOpenOptions();
+    // Always a real, saved script from here on — no more "draft" concept.
+    // That used to mean stashing picked fields in storage and hoping the
+    // options tab this opens would notice on its own next mount, which
+    // silently did nothing when an options tab was *already* open (focusing
+    // an existing tab doesn't remount it, so it never re-read the draft).
+    // Saving for real up front and reusing the same scripts/refresh
+    // broadcast the "existing script" branch above already relies on works
+    // regardless of whether an options tab happens to be open already.
+    await saveScript(script);
+    await focusOrOpenOptions(script.id);
   }
 
-  async function focusOrOpenOptions(scriptId?: string): Promise<void> {
+  async function focusOrOpenOptions(scriptId: string): Promise<void> {
     const optionsUrl = browser.runtime.getURL('/options.html');
     const openTabs = await browser.tabs.query({ url: `${optionsUrl}*` });
 
     if (openTabs[0]?.id != null) {
       await browser.tabs.update(openTabs[0].id, { active: true });
       if (openTabs[0].windowId != null) await browser.windows.update(openTabs[0].windowId, { focused: true });
-      if (scriptId) {
-        // The options page is an extension page, not a content script, so it
-        // must be reached with an untargeted runtime broadcast, not tabs.sendMessage.
-        await browser.runtime.sendMessage({ type: 'scripts/refresh', scriptId } satisfies RuntimeMessage);
-      }
+      // The options page is an extension page, not a content script, so it
+      // must be reached with an untargeted runtime broadcast, not tabs.sendMessage.
+      await browser.runtime.sendMessage({ type: 'scripts/refresh', scriptId } satisfies RuntimeMessage);
       return;
     }
 
-    await browser.tabs.create({ url: scriptId ? `${optionsUrl}?script=${scriptId}` : optionsUrl });
+    await browser.tabs.create({ url: `${optionsUrl}?script=${scriptId}` });
   }
 
   async function flashResultBadge(tabId: number | undefined, results: FillFieldResult[]): Promise<void> {
@@ -180,5 +233,22 @@ export default defineBackground(() => {
       const tab = await browser.tabs.get(tabId).catch(() => undefined);
       await updateMatchBadge(tabId, tab?.url);
     }, 3000);
+  }
+
+  /** The "Run script for this page" context-menu action — same fill/run mechanism the popup's Run button uses. */
+  async function handleRunFirstMatchingScript(tabId: number, url: string | undefined): Promise<void> {
+    if (!url) return;
+    const scripts = await listScripts();
+    const script = scripts.find((entry) => matchesAnyPattern(url, entry.urlPatterns));
+    if (!script) {
+      await browser.tabs.sendMessage(tabId, { type: 'contextmenu/no-script-found' } satisfies RuntimeMessage).catch(() => {});
+      return;
+    }
+    // content.ts's own runFillScript() already broadcasts `fill/result` on
+    // completion regardless of who triggered it, which is what flashes the
+    // toolbar badge — no separate success feedback needed here. A tab with
+    // no content script (e.g. a chrome:// page) just fails silently, same
+    // as the popup's own Run button does today.
+    await browser.tabs.sendMessage(tabId, { type: 'fill/run', script } satisfies RuntimeMessage).catch(() => {});
   }
 });

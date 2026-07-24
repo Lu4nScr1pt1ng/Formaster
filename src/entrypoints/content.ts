@@ -1,11 +1,14 @@
 import { fillScript } from '../lib/filler/fill-script';
 import type { CustomGeneratorRunResult, ExistingPickedField, PickedField, RuntimeMessage } from '../lib/messaging/types';
+import { initContextMenuFill } from '../lib/picker/context-menu-fill';
 import { PickerOverlay } from '../lib/picker/overlay';
 import type { FormScript } from '../lib/schema/script';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
   main() {
+    initContextMenuFill();
+
     let overlay: PickerOverlay | null = null;
     let pickedFields: PickedField[] = [];
     let removedExistingFieldIds: string[] = [];

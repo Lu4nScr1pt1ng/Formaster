@@ -101,7 +101,12 @@ async function resolveValue(
   }
 }
 
-async function applyValue(element: Element, field: FieldMapping, value: string | number | boolean): Promise<void> {
+/** Exported for reuse by the single-field "Fill this field" context-menu action — it has no full FieldMapping, just an elementType. */
+export async function applyValue(
+  element: Element,
+  field: Pick<FieldMapping, 'elementType' | 'options'>,
+  value: string | number | boolean,
+): Promise<void> {
   switch (field.elementType) {
     case 'checkbox':
       setCheckbox(element as HTMLInputElement, Boolean(value));
