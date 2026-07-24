@@ -1,0 +1,29 @@
+<script lang="ts">
+  interface Props {
+    size?: number;
+  }
+
+  let { size = 16 }: Props = $props();
+</script>
+
+<!-- Cropped tight to the glyph's own (non-square, wider-than-tall) bounding box —
+     the source artwork's 0 0 128 128 viewBox has a lot of empty margin baked in,
+     which made this look undersized at the small badge sizes used here. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="12 22 104 84" width={size} height={size} fill="none">
+  <g fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round">
+    <path
+      d="M34 30 C28 30 28 38 28 46 C28 56 22 64 16 64 C22 64 28 72 28 82 C28 90 28 98 34 98"
+    />
+    <path
+      d="M94 30 C100 30 100 38 100 46 C100 56 106 64 112 64 C106 64 100 72 100 82 C100 90 100 98 94 98"
+    />
+  </g>
+  <g fill="currentColor" fill-rule="evenodd">
+    <path
+      d="M50 30 H78 A8 8 0 0 1 78 46 H50 A8 8 0 0 1 50 30 Z M50 82 H78 A8 8 0 0 1 78 98 H50 A8 8 0 0 1 50 82 Z"
+    />
+    <path
+      d="M46 48 H82 V80 H46 Z M56 54 H72 A4 4 0 0 1 72 62 H56 A4 4 0 0 1 56 54 Z M56 68 H66 A4 4 0 0 1 66 76 H56 A4 4 0 0 1 56 68 Z"
+    />
+  </g>
+</svg>

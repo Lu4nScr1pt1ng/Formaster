@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+// Without this, Zod probes for `new Function` support on first use to pick a
+// faster validation codepath — harmless (wrapped in try/catch) but our CSP
+// has no 'unsafe-eval', so the probe always throws and gets reported as a
+// CSP violation in the console. `jitless` skips the probe entirely.
+z.config({ jitless: true });
+
 /**
  * A single selector candidate. Fields store several of these, ordered by
  * reliability, and the filler tries them in cascade until one resolves.

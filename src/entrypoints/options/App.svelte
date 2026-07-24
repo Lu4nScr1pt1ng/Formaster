@@ -2,12 +2,12 @@
   import { onMount } from 'svelte';
   import FlaskIcon from 'phosphor-svelte/lib/FlaskIcon';
   import ListIcon from 'phosphor-svelte/lib/ListIcon';
-  import MagicWandIcon from 'phosphor-svelte/lib/MagicWandIcon';
   import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon';
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
   import UploadSimpleIcon from 'phosphor-svelte/lib/UploadSimpleIcon';
   import XIcon from 'phosphor-svelte/lib/XIcon';
   import { browser } from 'wxt/browser';
+  import BrandIcon from '../../components/BrandIcon.svelte';
   import ImportDialog from '../../components/ImportDialog.svelte';
   import ScriptEditor from '../../components/ScriptEditor.svelte';
   import ToastHost from '../../components/ToastHost.svelte';
@@ -189,7 +189,7 @@
       <div class="relative flex h-[22px] w-[22px] shrink-0 items-center justify-center">
         <div class="absolute inset-[-6px] -z-10 rounded-full bg-accent-500/35 blur-[5px]"></div>
         <div class="flex h-[22px] w-[22px] items-center justify-center rounded-[7px] bg-accent-500 text-accent-ink">
-          <MagicWandIcon size={12} weight="bold" />
+          <BrandIcon size={15} />
         </div>
       </div>
       <span class="text-[13px] font-bold tracking-tight">Formaster</span>

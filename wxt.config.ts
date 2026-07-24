@@ -26,8 +26,7 @@ export default defineConfig({
     ...(browser === 'firefox' && {
       browser_specific_settings: {
         gecko: {
-          // Replace with a real id (or omit) before publishing to AMO.
-          id: 'formaster@formaster.dev',
+          id: '{528dc21e-5250-4eb5-9b02-5a63d49e9a1f}',
           // Formaster never transmits data anywhere; everything stays in local storage.
           data_collection_permissions: { required: ['none'] },
         },

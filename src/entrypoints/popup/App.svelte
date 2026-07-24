@@ -6,12 +6,12 @@
   import GearSixIcon from 'phosphor-svelte/lib/GearSixIcon';
   import GlobeIcon from 'phosphor-svelte/lib/GlobeIcon';
   import ListBulletsIcon from 'phosphor-svelte/lib/ListBulletsIcon';
-  import MagicWandIcon from 'phosphor-svelte/lib/MagicWandIcon';
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon';
   import PlayIcon from 'phosphor-svelte/lib/PlayIcon';
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon';
   import { browser } from 'wxt/browser';
+  import BrandIcon from '../../components/BrandIcon.svelte';
   import type { FillFieldResult, RuntimeMessage } from '../../lib/messaging/types';
   import type { FormScript } from '../../lib/schema/script';
   import { setDraft } from '../../lib/storage/draft-store';
@@ -107,7 +107,7 @@
     <div class="relative flex h-7 w-7 shrink-0 items-center justify-center">
       <div class="absolute inset-[-8px] -z-10 rounded-full bg-accent-500/35 blur-[6px]"></div>
       <div class="flex h-7 w-7 items-center justify-center rounded-[9px] bg-accent-500 text-accent-ink">
-        <MagicWandIcon size={16} weight="bold" />
+        <BrandIcon size={20} />
       </div>
     </div>
     <span class="text-[13.5px] font-bold tracking-tight">Formaster</span>

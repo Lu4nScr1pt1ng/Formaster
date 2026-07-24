@@ -1,6 +1,7 @@
 {
   "name": "formaster",
   "description": "Automatic form filling with mocked data, visual field mapping, and programmable per-site scripts",
+  "license": "MIT",
   "private": true,
   "version": "0.0.0",
   "type": "module",
