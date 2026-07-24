@@ -96,7 +96,7 @@
 </script>
 
 <div class="rounded-xl border border-dashed border-white/12 p-2.5">
-  <div class="flex items-center gap-2">
+  <div class="flex flex-wrap items-center gap-y-1.5 gap-x-2">
     <div class="flex shrink-0 flex-col">
       <button
         type="button"
@@ -145,7 +145,7 @@
     </button>
   </div>
 
-  <div class="mt-2 flex items-center gap-1.5 pl-6 text-xs text-ink-3">
+  <div class="mt-2 flex flex-wrap items-center gap-y-1 gap-x-1.5 pl-6 text-xs text-ink-3">
     <span>Give up after</span>
     <input
       type="number"

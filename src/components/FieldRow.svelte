@@ -181,7 +181,7 @@
 </script>
 
 <div id={`field-${field.id}`} class="rounded-xl bg-surface p-3">
-  <div class="flex items-center gap-2">
+  <div class="flex flex-wrap items-center gap-y-1.5 gap-x-2">
     <div class="flex shrink-0 flex-col">
       <button
         type="button"
@@ -213,7 +213,7 @@
       onChange={(elementType) => onChange({ ...field, elementType: elementType as FieldElementType })}
     />
 
-    <div class="group relative flex min-w-0 flex-1 items-center">
+    <div class="group relative flex min-w-[7rem] flex-1 items-center">
       <input
         class="min-w-0 flex-1 rounded-t-[5px] border-b border-dashed border-white/15 bg-transparent px-1 py-0.5 text-sm text-ink-1 outline-none transition placeholder:text-ink-3 hover:border-white/30 hover:bg-surface-hover focus:border-solid focus:border-accent-500 focus:bg-surface-hover"
         value={field.label ?? ''}
@@ -367,7 +367,7 @@
     {/if}
   </div>
 
-  <div class="mt-2.5 flex items-center gap-2 border-t border-hair pt-2.5">
+  <div class="mt-2.5 flex flex-wrap items-center gap-y-1.5 gap-x-2 border-t border-hair pt-2.5">
     <button
       type="button"
       class="flex items-center gap-1 rounded-md border border-hair px-2 py-1 text-xs text-ink-2 transition hover:border-accent-500 hover:text-accent-500 disabled:opacity-50"

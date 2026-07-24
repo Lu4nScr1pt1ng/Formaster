@@ -1,9 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import FlaskIcon from 'phosphor-svelte/lib/FlaskIcon';
+  import ListIcon from 'phosphor-svelte/lib/ListIcon';
   import MagicWandIcon from 'phosphor-svelte/lib/MagicWandIcon';
   import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon';
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
   import UploadSimpleIcon from 'phosphor-svelte/lib/UploadSimpleIcon';
+  import XIcon from 'phosphor-svelte/lib/XIcon';
   import { browser } from 'wxt/browser';
   import ImportDialog from '../../components/ImportDialog.svelte';
   import ScriptEditor from '../../components/ScriptEditor.svelte';
@@ -25,6 +28,10 @@
   let selectedId = $state<string | null>(null);
   let searchQuery = $state('');
   let importDialogOpen = $state(false);
+  // Below the `md` breakpoint the sidebar becomes an off-canvas drawer
+  // instead of a static column — there isn't room for both side by side down
+  // to ~300px wide. Ignored at `md` and up, where the sidebar is always shown.
+  let sidebarOpen = $state(false);
 
   const selectedScript = $derived(scripts.find((script) => script.id === selectedId) ?? null);
 
@@ -95,6 +102,10 @@
     selectedId = script.id;
   }
 
+  function openPlayground(): void {
+    browser.tabs.create({ url: browser.runtime.getURL('/playground.html') });
+  }
+
   function handleDuplicate(script: FormScript): void {
     const copy = duplicateScript(script);
     scripts = [...scripts, copy];
@@ -150,7 +161,20 @@
 </script>
 
 <div class="flex h-screen bg-canvas text-ink-1">
-  <aside class="flex w-64 shrink-0 flex-col border-r border-hair bg-sidebar">
+  {#if sidebarOpen}
+    <button
+      type="button"
+      class="fixed inset-0 z-40 bg-black/50 md:hidden"
+      aria-label="Close menu"
+      onclick={() => (sidebarOpen = false)}
+    ></button>
+  {/if}
+
+  <aside
+    class="{sidebarOpen
+      ? 'flex'
+      : 'hidden'} fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] flex-col border-r border-hair bg-sidebar md:static md:z-auto md:flex md:w-64 md:max-w-none md:shrink-0"
+  >
     <div class="flex items-center gap-2 px-4 py-4">
       <div class="relative flex h-[22px] w-[22px] shrink-0 items-center justify-center">
         <div class="absolute inset-[-6px] -z-10 rounded-full bg-accent-500/35 blur-[5px]"></div>
@@ -159,6 +183,14 @@
         </div>
       </div>
       <span class="text-[13px] font-bold tracking-tight">Formaster</span>
+      <button
+        type="button"
+        class="ml-auto rounded-lg p-1 text-ink-3 hover:bg-surface-hover hover:text-ink-1 md:hidden"
+        aria-label="Close menu"
+        onclick={() => (sidebarOpen = false)}
+      >
+        <XIcon size={15} weight="bold" />
+      </button>
     </div>
 
     <div class="flex gap-2 px-4 pb-3">
@@ -177,6 +209,17 @@
       >
         <UploadSimpleIcon size={13} weight="bold" />
         Import
+      </button>
+    </div>
+
+    <div class="px-4 pb-3">
+      <button
+        type="button"
+        class="flex w-full items-center justify-center gap-1.5 rounded-lg border border-hair px-2 py-1.5 text-xs transition active:scale-[0.97] hover:bg-surface-hover"
+        onclick={openPlayground}
+      >
+        <FlaskIcon size={13} weight="bold" />
+        Open playground
       </button>
     </div>
 
@@ -201,7 +244,10 @@
           class="w-full truncate rounded-lg px-3 py-2 text-left text-[12.5px] transition {selectedId === script.id
             ? 'bg-accent-500/13 font-semibold text-accent-500'
             : 'text-ink-2 hover:bg-surface-hover hover:text-ink-1'}"
-          onclick={() => (selectedId = script.id)}
+          onclick={() => {
+            selectedId = script.id;
+            sidebarOpen = false;
+          }}
         >
           {script.name}
         </button>
@@ -213,20 +259,34 @@
     </nav>
   </aside>
 
-  <main class="flex-1 overflow-hidden">
-    {#if selectedScript}
-      {#key selectedScript.id}
-        <ScriptEditor
-          script={selectedScript}
-          onSave={handleSave}
-          onDelete={handleDelete}
-          onExport={handleExport}
-          onDuplicate={handleDuplicate}
-        />
-      {/key}
-    {:else}
-      <div class="flex h-full items-center justify-center text-sm text-ink-3">Select or create a script to get started.</div>
-    {/if}
+  <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
+    <div class="flex shrink-0 items-center gap-2 border-b border-hair px-3 py-2 md:hidden">
+      <button
+        type="button"
+        class="rounded-lg p-1.5 text-ink-2 hover:bg-surface-hover hover:text-ink-1"
+        aria-label="Open script list"
+        onclick={() => (sidebarOpen = true)}
+      >
+        <ListIcon size={16} weight="bold" />
+      </button>
+      <span class="truncate text-xs font-medium text-ink-2">{selectedScript?.name ?? 'Formaster'}</span>
+    </div>
+
+    <div class="min-h-0 flex-1">
+      {#if selectedScript}
+        {#key selectedScript.id}
+          <ScriptEditor
+            script={selectedScript}
+            onSave={handleSave}
+            onDelete={handleDelete}
+            onExport={handleExport}
+            onDuplicate={handleDuplicate}
+          />
+        {/key}
+      {:else}
+        <div class="flex h-full items-center justify-center text-sm text-ink-3">Select or create a script to get started.</div>
+      {/if}
+    </div>
   </main>
 </div>
 

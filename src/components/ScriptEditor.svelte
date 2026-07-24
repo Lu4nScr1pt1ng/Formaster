@@ -323,8 +323,8 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="flex h-full flex-col">
-  <div class="flex items-center justify-between gap-3 border-b border-hair px-6 py-4">
+<div class="@container flex h-full flex-col">
+  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-hair px-3 py-3 sm:px-6 sm:py-4">
     <div class="group relative flex min-w-0 max-w-sm flex-1 items-center">
       <input
         class="min-w-0 flex-1 rounded-t-[5px] border-b border-dashed border-white/15 bg-transparent px-1.5 py-1 text-lg font-semibold text-ink-1 outline-none transition placeholder:text-ink-3 hover:border-white/30 hover:bg-surface-hover focus:border-solid focus:border-accent-500 focus:bg-surface-hover"
@@ -336,7 +336,7 @@
         class="pointer-events-none ml-1.5 shrink-0 text-ink-3 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
       />
     </div>
-    <div class="flex shrink-0 gap-2">
+    <div class="flex flex-wrap justify-end gap-2">
       <button
         type="button"
         class="flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
@@ -404,10 +404,10 @@
     </div>
   </div>
 
-  <div class="grid min-h-0 flex-1 {showJsonView ? 'grid-cols-2' : 'grid-cols-1'}">
-    <div class="min-h-0 space-y-6 overflow-y-auto px-6 py-4">
+  <div class="grid min-h-0 flex-1 grid-cols-1 {showJsonView ? '@3xl:grid-cols-2' : ''}">
+    <div class="min-h-0 space-y-6 overflow-y-auto px-3 py-4 sm:px-6">
       <section>
-        <div class="mb-2 flex items-center justify-between">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-y-1.5">
           <label class="block text-[11px] font-semibold uppercase tracking-wider text-ink-3" for="url-patterns">
             URL patterns (one per line)
           </label>
@@ -430,11 +430,11 @@
       </section>
 
       <section>
-        <div class="mb-2 flex items-center justify-between">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-y-1.5">
           <h2 class="text-[11px] font-semibold uppercase tracking-wider text-ink-3">
             Fields ({draft.steps.filter((step) => step.type === 'field').length})
           </h2>
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-y-1 gap-x-3">
             <button
               type="button"
               class="flex items-center gap-1.5 text-xs font-medium text-ink-2 transition hover:text-accent-500"
@@ -580,7 +580,7 @@
     </div>
 
     {#if showJsonView}
-      <div class="flex min-h-0 flex-col border-l border-hair">
+      <div class="flex max-h-[50vh] min-h-0 flex-col border-t border-hair @3xl:max-h-none @3xl:border-l @3xl:border-t-0">
         {#if jsonError}
           <p class="border-b border-hair bg-red-500/10 px-4 py-2 text-xs text-red-400">{jsonError}</p>
         {:else}

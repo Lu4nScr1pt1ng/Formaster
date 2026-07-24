@@ -91,8 +91,8 @@
   }
 </script>
 
-<main class="w-[360px] bg-canvas text-ink-1">
-  <header class="flex items-center gap-2.5 px-4 py-3.5">
+<main class="flex max-h-[600px] w-full min-w-[300px] max-w-[380px] flex-col bg-canvas text-ink-1">
+  <header class="flex shrink-0 items-center gap-2.5 px-4 py-3.5">
     <div class="relative flex h-7 w-7 shrink-0 items-center justify-center">
       <div class="absolute inset-[-8px] -z-10 rounded-full bg-accent-500/35 blur-[6px]"></div>
       <div class="flex h-7 w-7 items-center justify-center rounded-[9px] bg-accent-500 text-accent-ink">
@@ -118,12 +118,13 @@
       <div class="h-14 animate-pulse rounded-xl bg-surface"></div>
     </div>
   {:else}
-    <div class="flex items-center gap-1.5 px-4 pb-2 text-[11px] text-ink-3">
-      <GlobeIcon size={10} />
-      <span class="truncate">{hostname || 'No active tab'}</span>
-    </div>
+    <div class="flex min-h-0 flex-1 flex-col">
+      <div class="flex shrink-0 items-center gap-1.5 px-4 pb-2 text-[11px] text-ink-3">
+        <GlobeIcon size={10} />
+        <span class="truncate">{hostname || 'No active tab'}</span>
+      </div>
 
-    <div class="px-4">
+      <div class="min-h-0 flex-1 overflow-y-auto px-4">
       {#if matchingScripts.length > 0}
         <ul>
           {#each matchingScripts as script (script.id)}
@@ -196,9 +197,10 @@
           <p class="text-[11.5px] text-ink-3">Map the fields on this page once, then run them here anytime.</p>
         </div>
       {/if}
+      </div>
     </div>
 
-    <div class="px-4 pb-3.5 pt-3">
+    <div class="shrink-0 px-4 pb-3.5 pt-3">
       <button
         type="button"
         class="flex w-full items-center justify-center gap-2 rounded-[11px] py-3 text-[12.5px] font-bold transition active:scale-[0.98] {matchingScripts.length >
@@ -213,7 +215,7 @@
     </div>
   {/if}
 
-  <footer class="border-t border-hair px-4 py-2.5">
+  <footer class="shrink-0 border-t border-hair px-4 py-2.5">
     <button type="button" class="flex items-center gap-1.5 text-[11.5px] text-ink-3 transition hover:text-ink-1" onclick={openLibrary}>
       <FolderOpenIcon size={13} weight="bold" />
       Open script library

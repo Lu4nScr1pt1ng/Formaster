@@ -30,7 +30,7 @@
   }
 </script>
 
-<div class="flex items-center gap-2 rounded-xl border border-dashed border-white/12 p-2.5">
+<div class="flex flex-wrap items-center gap-y-1.5 gap-x-2 rounded-xl border border-dashed border-white/12 p-2.5">
   <div class="flex shrink-0 flex-col">
     <button
       type="button"

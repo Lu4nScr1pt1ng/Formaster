@@ -103,13 +103,13 @@
   });
 </script>
 
-<div class="relative {compact ? 'shrink-0' : ''}" bind:this={root}>
+<div class="relative max-w-full {compact ? 'shrink-0' : 'min-w-0'}" bind:this={root}>
   <button
     type="button"
     bind:this={triggerEl}
     class={compact
-      ? `flex items-center gap-1 rounded-md bg-surface-hover py-0.5 pl-1.5 pr-1 font-mono text-[10px] uppercase tracking-wide text-ink-2 outline-none ${triggerClass}`
-      : `flex items-center gap-1.5 rounded-md border border-hair bg-canvas py-1 pl-2 pr-1.5 text-xs text-ink-1 outline-none ${triggerClass}`}
+      ? `flex max-w-full items-center gap-1 rounded-md bg-surface-hover py-0.5 pl-1.5 pr-1 font-mono text-[10px] uppercase tracking-wide text-ink-2 outline-none ${triggerClass}`
+      : `flex max-w-full items-center gap-1.5 rounded-md border border-hair bg-canvas py-1 pl-2 pr-1.5 text-xs text-ink-1 outline-none ${triggerClass}`}
     aria-haspopup="listbox"
     aria-expanded={open}
     aria-controls={listboxId}
@@ -117,7 +117,7 @@
     onclick={() => (open ? closePanel() : openPanel())}
     onkeydown={handleTriggerKeydown}
   >
-    <span class="truncate">{selectedLabel}</span>
+    <span class="min-w-0 truncate">{selectedLabel}</span>
     <CaretDownIcon size={compact ? 8 : 11} class="shrink-0 text-ink-3" />
   </button>
 
