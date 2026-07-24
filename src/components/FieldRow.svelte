@@ -104,11 +104,14 @@
     { value: NEW_GENERATOR_VALUE, label: '+ New generator…' },
   ]);
 
-  const selectedCustomGeneratorFields = $derived(
-    field.generator.kind === 'custom'
-      ? (customGenerators.find((generator) => generator.id === field.generator.generatorId)?.optionsSchema ?? [])
-      : [],
-  );
+  const selectedCustomGeneratorFields = $derived.by(() => {
+    // Narrowed into a local first — `field` is a reactive prop, so TS can't
+    // carry the `kind === 'custom'` narrowing through a closure that reads
+    // `field.generator` again inside it.
+    const generator = field.generator;
+    if (generator.kind !== 'custom') return [];
+    return customGenerators.find((entry) => entry.id === generator.generatorId)?.optionsSchema ?? [];
+  });
 
   function setGeneratorKind(kind: GeneratorRef['kind']): void {
     let generator: GeneratorRef;

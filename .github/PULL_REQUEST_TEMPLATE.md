@@ -9,16 +9,16 @@ and why this is the right fix for it, not just a fix. If there's an issue for th
 ## Testing
 
 <!--
-There's no automated test suite here (see CONTRIBUTING.md) -- manual verification is the bar.
-Tell us what you actually did: mapped which field(s) on which page, what generator/options you
-set, and what you saw before vs. after your change. The Playground and test-fixtures/ are the
-fastest way to check most of this without needing a real site.
+See CONTRIBUTING.md's Testing section for what `npm run test:e2e` does and doesn't cover.
+If you added/changed behavior it doesn't reach (a real toolbar popup, anything Firefox-specific),
+say what you did to check it manually instead.
 -->
 
-- [ ] I verified this manually (describe how above) — before and after, not just after
-- [ ] `npm run check` passes locally
-- [ ] If this touches the picker, content-script/background messaging, the QuickJS sandbox, or
-      the manifest CSP, I checked it in both a Chromium browser and Firefox
+- [ ] `npm run check` && `npm run test:e2e` pass locally
+- [ ] If this fixes a bug, I added a test that fails without the fix and passes with it — or
+      explained below why that wasn't practical
+- [ ] If this touches anything Firefox-specific (`wxt.config.ts`'s `browser === 'firefox'`
+      branches), I checked it manually with `npm run dev:firefox` — the e2e suite is Chromium-only
 
 ## Scope check
 

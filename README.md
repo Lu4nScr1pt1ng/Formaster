@@ -154,9 +154,9 @@ request the extension makes on its own.
 ## Contributing
 
 Bug reports, feature requests, and pull requests are welcome — see
-[CONTRIBUTING.md](CONTRIBUTING.md) for how this project is set up, since
-there's no CI here to lean on and manual verification is part of the
-workflow.
+[CONTRIBUTING.md](CONTRIBUTING.md) for how this project is set up, including
+what the Playwright suite (`npm run test:e2e`) covers and what still needs a
+manual check.
 
 ## License
 

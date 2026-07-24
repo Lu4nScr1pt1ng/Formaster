@@ -1,10 +1,10 @@
 # Contributing to Formaster
 
 Thanks for looking at this. The short version: fork the repo, make your change
-on a branch, verify it actually works (see Testing below — there's no
-automated suite to lean on here), open a pull request that explains what
-problem you're solving and why your approach solves it. The rest of this
-document is detail on how to do that well in this particular codebase.
+on a branch, verify it actually works (`npm run test:e2e` — see Testing
+below for what it does and doesn't cover), open a pull request that explains
+what problem you're solving and why your approach solves it. The rest of
+this document is detail on how to do that well in this particular codebase.
 
 ## Before you write any code
 
@@ -30,7 +30,8 @@ a selector strategy that doesn't escape a value correctly), just send the PR.
 npm install
 npm run dev             # Chrome/Brave/Opera, with HMR, for local development
 npm run dev:firefox     # Firefox, with HMR
-npm run check            # svelte-check (TypeScript) — this is the only automated check there is
+npm run check            # svelte-check (TypeScript)
+npm run test:e2e         # Playwright, against a real built extension — see Testing below
 ```
 
 To try a production build: `npm run build` (or `build:firefox`), then load
@@ -78,31 +79,53 @@ description — that's a completely fine thing to be unsure about.
 
 ## Testing
 
-There is no automated test suite — `npm run check` only type-checks. That
-makes manual verification the actual bar for a change here, not an
-afterthought before it.
+`npm run test:e2e` (Playwright, `e2e/`) builds the real extension and drives
+it in real Chromium — loading it unpacked, picking real elements on real
+pages, running real fills, importing/exporting real files. Nothing in that
+suite is mocked: `e2e/fixtures/extension.ts` launches a fresh, isolated
+browser profile per test (so tests can't leak state into each other) and
+waits on the actual `serviceworker` event and rendered UI state rather than
+fixed delays, which is what keeps it fast and non-flaky. `npm run check`
+(svelte-check) is the other automated gate; both run in CI on every PR.
 
-- **The Playground** (`Open playground` in the script library, or
-  `/playground.html` in the built extension) is the fastest way to check
-  anything touching generators, the fill logic, or conditional waits — it
-  bundles every field type plus a disabled-until-filled field, against a
-  seeded example script, with nothing external to set up.
-- **`test-fixtures/*.html`** are static pages purpose-built for cases a
-  simple form doesn't exercise: a card-number/expiry/CVC group with live
-  input formatting, and a fully custom (non-`<select>`) combobox — open one
-  with a local static server (or `file://`, if your browser profile allows
-  extensions to read `file://` pages) and map/run a script against it.
-- **Picker changes** need a real load-unpacked extension and a real page —
-  the shadow-DOM overlay, hover highlighting, and the mousedown-blocking
-  guard around native pickers can't be meaningfully checked any other way.
-- **Cross-browser changes**: if you're touching anything in
-  `src/lib/generators/quickjs-runner.ts`, the CSP in `wxt.config.ts`, or
-  content-script/background messaging, verify in both a Chromium browser and
-  Firefox — MV3 behavior between them isn't identical everywhere.
+- **`e2e/smoke.spec.ts`** — popup/options/playground all load with no
+  uncaught errors.
+- **`e2e/playground.spec.ts`** — runs the Playground's seeded script and
+  checks actual field values, not just "filled" status: builtin generator
+  options are honored (password length/charset), custom generators read
+  `fields.*` (confirm-password) and their own options (username), and the
+  conditional-wait-gated field unlocks and fills correctly.
+- **`e2e/picker.spec.ts`** — maps and unmaps elements through the real "Add
+  fields from page" flow against `test-fixtures/stripe-style-checkout.html`,
+  including the regression check that a newly-picked field actually shows up
+  live in the options tab that started the picker (this broke once before —
+  see the comment in that file).
+- **`e2e/conditional-wait.spec.ts`** — the `waitFor` step against
+  `test-fixtures/conditional-address-form.html`, which is built to be
+  self-verifying (fixed 350ms lookup delay, no jitter) and includes a
+  negative case proving the wait is actually load-bearing.
+- **`e2e/import-export.spec.ts`** — a script round-trips import → export →
+  re-import byte-for-byte, and invalid JSON is rejected with a visible error
+  rather than silently accepted.
 
-If your PR fixes a bug, say in the description exactly what you did to
-reproduce it before your fix and confirm it's gone after — that's what
-"explain why this fixes it" means without an automated test to point at.
+What it deliberately doesn't cover: a real browser-action popup bubble isn't
+something Playwright can drive at all (only pages it navigates itself), so
+popup-specific button wiring is exercised indirectly rather than by clicking
+the actual toolbar icon — see the comment at the top of
+`playwright.config.ts`. There's also no Firefox project — Playwright doesn't
+support loading an unpacked extension into its Firefox build, so anything
+behind `wxt.config.ts`'s `browser === 'firefox'` branches, or Firefox-specific
+MV3 behavior generally, needs a manual check (`npm run dev:firefox`) if
+you're touching it.
+
+Add a `test-fixtures/*.html` page (served by `e2e/fixtures/static-server.ts`
+automatically — no wiring needed) when an existing one can't represent the
+case you're testing, following the same self-verifying, jitter-free spirit as
+the existing two (see `conditional-address-form.html`'s header comment).
+
+If your PR fixes a bug, a test that fails without your fix and passes with
+it is worth far more than the same claim in prose — that's what "explain why
+this fixes it" should mean whenever it's practical to write one.
 
 ## Code style
 
