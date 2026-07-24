@@ -1,0 +1,44 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Vite (via WXT) requires ^20.19.0 || >=22.12.0 — see README's
+          # "Build from source" for why.
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Keeps the tag and package.json version from silently drifting apart
+      # — the zip filenames (formaster-<version>-chrome.zip) are derived
+      # from package.json, not from the tag, so a mismatch here would ship
+      # a release whose asset names don't match the tag that triggered it.
+      - name: Verify tag matches package.json version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+
+      - run: npm run zip
+      - run: npm run zip:firefox
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: .output/*.zip
+          generate_release_notes: true

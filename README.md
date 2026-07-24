@@ -94,7 +94,21 @@ The whole UI (popup, options, playground) is responsive down to a ~300px-wide
 viewport — narrow sidebars collapse into drawers, toolbars wrap instead of
 overflowing, and side-by-side panels stack.
 
-## Build from source
+## Installation
+
+**Prebuilt (recommended)** — download the latest `.zip` for your browser from
+the [Releases page](https://github.com/Lu4nScr1pt1ng/Formaster/releases),
+unzip it, then:
+
+- **Chrome / Brave / Opera**: open `chrome://extensions`, enable "Developer
+  mode", then "Load unpacked" → select the unzipped folder.
+- **Firefox**: open `about:debugging#/runtime/this-firefox`, then "Load
+  Temporary Add-on" → select `manifest.json` inside the unzipped folder.
+  (Temporary add-ons are removed when Firefox closes — reload after
+  restarting.)
+
+**Build from source** — for development, or to inspect exactly what runs
+before loading it. See below.
 
 **Requirements:**
 - Any OS (Linux, macOS, or Windows) — nothing platform-specific in the build.
