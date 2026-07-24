@@ -10,6 +10,30 @@ generators.
 Built with [WXT](https://wxt.dev) + Svelte 5 + TypeScript + Zod + Tailwind v4.
 Targets Chrome, Brave, and Opera (Chromium/MV3) and Firefox (MV3).
 
+## Using it
+
+1. Click the toolbar icon on a page with a form, then **Map fields on this
+   page**. Click each input you want to fill — a persistent green outline
+   marks it, and clicking it again (or its ✕) unmaps it. Hit **Finish** (or
+   `Esc`) when done.
+2. That opens the script library with a new, unsaved script scoped to that
+   page's URL. Give each field a generator — a built-in one, a fixed value,
+   or your own JavaScript — and **Save**.
+3. From then on, opening that same page (or any URL matching the script's
+   pattern) shows the script in the popup with a **Run** button. One click
+   fills every mapped field.
+
+Scripts are per-site, not global — a login form and a checkout form on the
+same domain can each have their own script, or share one, depending on how
+broad you make the URL pattern. Everything lives in the script library
+(**Open script library**, from the popup or the gear icon), where you can
+edit, duplicate, export/import, or delete scripts, and add or remove fields
+without re-mapping from scratch.
+
+If you'd rather try it out before pointing it at a real site, open the
+**Playground** from the script library — a bundled demo page covering every
+field type, wired to a ready-to-run example script, with nothing to set up.
+
 ## How it works
 
 - **Popup** — shows every script matching the current site (a page can have
@@ -119,3 +143,21 @@ npm run check            # svelte-check (TypeScript)
 
 [VS Code](https://code.visualstudio.com/) +
 [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+
+## Privacy
+
+Formaster doesn't collect, transmit, or share anything. Scripts, custom
+generators, and settings are written to `browser.storage.local` and never
+leave your device — there's no telemetry, no remote server, and no network
+request the extension makes on its own.
+
+## Contributing
+
+Bug reports, feature requests, and pull requests are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for how this project is set up, since
+there's no CI here to lean on and manual verification is part of the
+workflow.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

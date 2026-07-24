@@ -1,0 +1,104 @@
+name: Bug report
+description: Something in the picker, a generator, the editor, or a fill run isn't working right
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A couple of things that make bug reports here much faster to act on:
+
+        - If the bug is about a specific page, export the script (**Export** in the script
+          library) and attach the JSON, or link a minimal page that reproduces it — mapping and
+          filling depend a lot on the actual page structure, and a real script/page removes all
+          the guessing.
+        - "It doesn't work" without what you actually saw — a toast message, a field that stayed
+          empty, a console error — is usually not enough to act on.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected instead, and what actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: >
+        Ideally: map this field, set this generator, click Run, see this. If it only happens on
+        a specific site or with specific generator options, mention that too.
+      placeholder: |
+        1. Map the "Email" field with the built-in "email" generator
+        2. Add a custom generator that reads fields.email
+        3. Click Run
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: script
+    attributes:
+      label: Exported script (or a minimal repro page)
+      description: >
+        Paste the exported script JSON directly, or attach file(s) by dragging them into this
+        box (a script export, a minimal HTML page, a screenshot).
+      render: json
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does this show up?
+      multiple: true
+      options:
+        - Field picker (mapping elements on a page)
+        - Built-in generators
+        - Custom generators (the JavaScript sandbox)
+        - Script editor / JSON sync
+        - Filling a form (Run)
+        - Import / Export
+        - Playground
+        - Options / Popup UI
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: "Chrome 128 / Firefox 130 / Brave 1.68 / Opera 112"
+    validations:
+      required: true
+
+  - type: input
+    id: extension-version
+    attributes:
+      label: Formaster version
+      description: chrome://extensions or about:addons, with Developer Mode on.
+      placeholder: "0.1.0"
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "Windows 11 / macOS 15 / Ubuntu 24.04"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant console output
+      description: >
+        For background/generator issues: chrome://extensions → Formaster → the "service worker"
+        link → Console tab. For picker/fill issues on the page itself: that page's own DevTools
+        console.
+      render: text
+    validations:
+      required: false

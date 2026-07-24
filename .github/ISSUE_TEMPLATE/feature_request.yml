@@ -1,0 +1,55 @@
+name: Feature request
+description: Propose a new capability, or a change to how an existing one works
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Requests that describe the problem tend to get a better response than requests that
+        describe a solution — there might already be a way to do what you want (a custom
+        generator, an options schema, a conditional wait), or a simpler approach than the one you
+        have in mind. Both are welcome, but lead with the "why".
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do, and what's stopping you right now?
+      description: >
+        The actual site/form/workflow you're stuck on, not just "add X". If there's a workaround
+        you're using today (a custom generator, a manually-added selector), mention it — it helps
+        calibrate how painful the gap actually is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd want instead
+      description: If you have a specific idea of how this should work, describe it here. If not, that's fine too — say so.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Other extensions, a custom generator, or a manual workaround you tried before opening this.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does this belong?
+      options:
+        - Field picker (mapping elements on a page)
+        - Built-in generators
+        - Custom generators (the JavaScript sandbox)
+        - Script editor / JSON sync
+        - Filling a form (Run)
+        - Import / Export
+        - Playground
+        - Options / Popup UI
+        - Not sure
+    validations:
+      required: false
