@@ -7,6 +7,7 @@ export type FieldValueContext = Record<string, string | number | boolean>;
 
 export type CustomGeneratorRunner = (
   generatorId: string,
+  options: Record<string, unknown> | undefined,
   script: FormScript,
   context: FieldValueContext,
   generatorRunContext: GeneratorRunContext,
@@ -96,7 +97,7 @@ async function resolveValue(
     case 'fixed':
       return field.generator.value;
     case 'custom':
-      return runCustomGenerator(field.generator.generatorId, script, context, generatorRunContext);
+      return runCustomGenerator(field.generator.generatorId, field.generator.options, script, context, generatorRunContext);
   }
 }
 

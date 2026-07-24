@@ -10,8 +10,10 @@
   import SquareIcon from 'phosphor-svelte/lib/SquareIcon';
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import GeneratorOptionsEditor from './GeneratorOptionsEditor.svelte';
   import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
   import { BUILTIN_GENERATOR_LABELS } from '../lib/generators';
+  import { BUILTIN_GENERATOR_OPTION_FIELDS } from '../lib/generators/option-fields';
   import {
     fieldElementTypeSchema,
     type BuiltinGeneratorId,
@@ -102,6 +104,12 @@
     { value: NEW_GENERATOR_VALUE, label: '+ New generator…' },
   ]);
 
+  const selectedCustomGeneratorFields = $derived(
+    field.generator.kind === 'custom'
+      ? (customGenerators.find((generator) => generator.id === field.generator.generatorId)?.optionsSchema ?? [])
+      : [],
+  );
+
   function setGeneratorKind(kind: GeneratorRef['kind']): void {
     let generator: GeneratorRef;
     if (kind === 'builtin') {
@@ -119,6 +127,16 @@
 
   function setBuiltinId(id: BuiltinGeneratorId): void {
     onChange({ ...field, generator: { kind: 'builtin', id } });
+  }
+
+  function setBuiltinOptions(patch: Record<string, unknown>): void {
+    if (field.generator.kind !== 'builtin') return;
+    onChange({ ...field, generator: { ...field.generator, options: { ...field.generator.options, ...patch } } });
+  }
+
+  function setCustomOptions(patch: Record<string, unknown>): void {
+    if (field.generator.kind !== 'custom') return;
+    onChange({ ...field, generator: { ...field.generator, options: { ...field.generator.options, ...patch } } });
   }
 
   function setFixedValue(value: string): void {
@@ -340,6 +358,13 @@
         options={builtinSelectOptions}
         onChange={(id) => setBuiltinId(id as BuiltinGeneratorId)}
       />
+      {#if BUILTIN_GENERATOR_OPTION_FIELDS[field.generator.id]}
+        <GeneratorOptionsEditor
+          fields={BUILTIN_GENERATOR_OPTION_FIELDS[field.generator.id] ?? []}
+          value={field.generator.options}
+          onChange={setBuiltinOptions}
+        />
+      {/if}
     {:else if field.generator.kind === 'fixed'}
       <input
         class="rounded-md border border-hair bg-canvas px-2 py-1 text-xs text-ink-1 outline-none focus:border-accent-500"
@@ -363,6 +388,13 @@
         >
           <PencilSimpleIcon size={14} weight="bold" />
         </button>
+      {/if}
+      {#if selectedCustomGeneratorFields.length > 0}
+        <GeneratorOptionsEditor
+          fields={selectedCustomGeneratorFields}
+          value={field.generator.options}
+          onChange={setCustomOptions}
+        />
       {/if}
     {/if}
   </div>

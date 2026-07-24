@@ -256,4 +256,16 @@
       <p class="mt-1 text-[11px] text-ink-3">Framework state: <code class="font-mono text-ink-2">{promoValue || '—'}</code></p>
     </div>
   </fieldset>
+
+  <fieldset class="space-y-3 rounded-xl bg-surface p-3 sm:p-4">
+    <legend class="px-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Custom generator options</legend>
+    <label class="block text-xs font-medium text-ink-2">
+      Username
+      <input id="pg-username" type="text" class={`mt-1 ${inputClass}`} />
+      <span class="mt-1 block text-[11px] font-normal text-ink-3">
+        Its generator ("Username" in Custom generators, left side) defines its own <code class="font-mono">options.prefix</code>
+        /<code class="font-mono">options.digits</code> — this field is set to <code class="font-mono">guest</code> / 6 digits.
+      </span>
+    </label>
+  </fieldset>
 </div>

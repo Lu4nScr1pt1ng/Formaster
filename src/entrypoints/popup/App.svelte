@@ -9,11 +9,12 @@
   import MagicWandIcon from 'phosphor-svelte/lib/MagicWandIcon';
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon';
   import PlayIcon from 'phosphor-svelte/lib/PlayIcon';
-  import SparkleIcon from 'phosphor-svelte/lib/SparkleIcon';
+  import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon';
   import { browser } from 'wxt/browser';
   import type { FillFieldResult, RuntimeMessage } from '../../lib/messaging/types';
   import type { FormScript } from '../../lib/schema/script';
+  import { setDraft } from '../../lib/storage/draft-store';
   import { setReturnTabId } from '../../lib/storage/return-tab-store';
   import { listScripts } from '../../lib/storage/scripts-store';
   import { matchesAnyPattern } from '../../lib/url-match';
@@ -80,6 +81,16 @@
   async function openLibrary(): Promise<void> {
     if (activeTabId != null) await setReturnTabId(activeTabId);
     await browser.runtime.openOptionsPage();
+  }
+
+  // Same "unsaved draft" hand-off the picker flow uses (see options/App.svelte's
+  // onMount) — just with no picked fields, so it lands on a blank script
+  // already scoped to this page's URL pattern instead of "*://*/*".
+  async function createScriptForThisPage(): Promise<void> {
+    if (activeTabId != null) await setReturnTabId(activeTabId);
+    await setDraft({ pageUrl: currentUrl, fields: [] });
+    await browser.tabs.create({ url: browser.runtime.getURL('/options.html') });
+    window.close();
   }
 
   function safeHostname(url: string): string {
@@ -192,9 +203,16 @@
         </ul>
       {:else}
         <div class="flex flex-col items-center gap-2 rounded-xl border border-dashed border-hair px-4 py-6 text-center">
-          <SparkleIcon size={22} class="text-ink-3" />
           <p class="text-[12.8px] font-semibold">No script for this site yet</p>
           <p class="text-[11.5px] text-ink-3">Map the fields on this page once, then run them here anytime.</p>
+          <button
+            type="button"
+            class="mt-1.5 flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-[11.5px] font-semibold text-ink-1 transition hover:bg-surface-hover"
+            onclick={createScriptForThisPage}
+          >
+            <PlusIcon size={12} weight="bold" />
+            Create empty script for this page
+          </button>
         </div>
       {/if}
       </div>

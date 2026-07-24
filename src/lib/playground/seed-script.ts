@@ -12,45 +12,67 @@ function field(partial: Omit<FieldMapping, 'id' | 'selectors'> & { id: string })
   };
 }
 
-const GEN_PASSWORD = 'pg-gen-password';
 const GEN_CONFIRM_PASSWORD = 'pg-gen-confirm-password';
 const GEN_REFERRAL_CODE = 'pg-gen-referral-code';
 const GEN_PROMO_CODE = 'pg-gen-promo-code';
+const GEN_USERNAME = 'pg-gen-username';
 
 const customGenerators: CustomGenerator[] = [
-  {
-    id: GEN_PASSWORD,
-    name: 'Random password',
-    code: `const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
-let out = "";
-for (let i = 0; i < 12; i++) out += chars[Math.floor(Math.random() * chars.length)];
-return out;`,
-  },
   {
     id: GEN_CONFIRM_PASSWORD,
     name: 'Confirm password (matches password)',
     code: `// "fields" holds every field filled earlier in this script, keyed by label.
 return fields.password;`,
+    optionsSchema: [],
   },
   {
     id: GEN_REFERRAL_CODE,
     name: 'Referral code (derived from email)',
     code: `return "REF-" + String(fields.email).split("@")[0].toUpperCase();`,
+    optionsSchema: [],
   },
   {
     id: GEN_PROMO_CODE,
     name: 'Promo code (uses a helper)',
     code: `return "PROMO-" + helpers.uuid().slice(0, 8).toUpperCase();`,
+    optionsSchema: [],
+  },
+  {
+    id: GEN_USERNAME,
+    name: 'Username (custom generator with its own options)',
+    // "options" here is whatever this field's own Options editor is set to
+    // (see optionsSchema below) — every field using this generator can pick
+    // its own prefix/digit count independently.
+    code: `const prefix = options.prefix || "user";
+const digits = Math.max(1, options.digits || 4);
+const n = String(Math.floor(Math.random() * Math.pow(10, digits))).padStart(digits, "0");
+return prefix + "_" + n;`,
+    optionsSchema: [
+      {
+        key: 'prefix',
+        type: 'select',
+        label: 'Style',
+        default: 'user',
+        choices: [
+          { value: 'user', label: 'user_' },
+          { value: 'guest', label: 'guest_' },
+          { value: 'test', label: 'test_' },
+        ],
+      },
+      { key: 'digits', type: 'number', label: 'Digits', default: 4, min: 1, max: 10 },
+    ],
   },
 ];
 
 /**
  * A ready-to-run example script wired to the bundled Playground page
  * (`src/entrypoints/playground`). Exercises: every native input type, a
- * disabled-until-filled field (via a `waitFor` step), password/confirm
- * sharing a value through `fields.*`, credit card generators, and a
- * non-native "custom" widget — so a new user has something concrete to press
- * Run on and tweak, instead of an empty script.
+ * disabled-until-filled field (via a `waitFor` step), the built-in password
+ * generator plus a confirm-password custom generator reading `fields.*`,
+ * credit card generators, a non-native "custom" widget, and a custom
+ * generator with its own configurable `optionsSchema` (username) — so a new
+ * user has something concrete to press Run on and tweak, instead of an empty
+ * script.
  */
 export function buildPlaygroundScript(): FormScript {
   const now = new Date().toISOString();
@@ -81,7 +103,12 @@ export function buildPlaygroundScript(): FormScript {
       generator: { kind: 'builtin', id: 'integer', options: { min: 18, max: 90 } },
     }),
     field({ id: 'pg-birthdate', label: 'Birthdate', elementType: 'date', generator: { kind: 'builtin', id: 'birthdate' } }),
-    field({ id: 'pg-password', label: 'Password', elementType: 'password', generator: { kind: 'custom', generatorId: GEN_PASSWORD } }),
+    field({
+      id: 'pg-password',
+      label: 'Password',
+      elementType: 'password',
+      generator: { kind: 'builtin', id: 'password', options: { length: 14, symbols: false } },
+    }),
     field({
       id: 'pg-confirm-password',
       label: 'Confirm password',
@@ -129,6 +156,12 @@ export function buildPlaygroundScript(): FormScript {
       label: 'Promo code',
       elementType: 'text',
       generator: { kind: 'custom', generatorId: GEN_PROMO_CODE },
+    }),
+    field({
+      id: 'pg-username',
+      label: 'Username',
+      elementType: 'text',
+      generator: { kind: 'custom', generatorId: GEN_USERNAME, options: { prefix: 'guest', digits: 6 } },
     }),
   ];
 

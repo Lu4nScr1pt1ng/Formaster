@@ -53,6 +53,7 @@ export const builtinGeneratorIdSchema = z.enum([
   'addressNeighborhood',
   'company',
   'uuid',
+  'password',
   'integer',
   'decimal',
   'boolean',
@@ -62,6 +63,34 @@ export const builtinGeneratorIdSchema = z.enum([
   'creditCardCvc',
 ]);
 export type BuiltinGeneratorId = z.infer<typeof builtinGeneratorIdSchema>;
+
+/**
+ * Declares one configurable knob a generator (built-in or custom) exposes —
+ * rendered as a matching control (checkbox/number/select) next to the
+ * generator picker in `FieldRow`. For custom generators, the author defines
+ * this list themselves (see `customGeneratorSchema.optionsSchema` below);
+ * for built-ins it's a static table in `src/lib/generators/option-fields.ts`.
+ */
+export const generatorOptionFieldSchema = z.discriminatedUnion('type', [
+  z.object({ key: z.string().min(1), type: z.literal('boolean'), label: z.string().min(1), default: z.boolean() }),
+  z.object({
+    key: z.string().min(1),
+    type: z.literal('number'),
+    label: z.string().min(1),
+    default: z.number(),
+    min: z.number().optional(),
+    max: z.number().optional(),
+    step: z.number().optional(),
+  }),
+  z.object({
+    key: z.string().min(1),
+    type: z.literal('select'),
+    label: z.string().min(1),
+    default: z.string(),
+    choices: z.array(z.object({ value: z.string(), label: z.string() })).min(1),
+  }),
+]);
+export type GeneratorOptionField = z.infer<typeof generatorOptionFieldSchema>;
 
 /** How a field's value is produced at fill time. */
 export const generatorRefSchema = z.discriminatedUnion('kind', [
@@ -77,6 +106,7 @@ export const generatorRefSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('custom'),
     generatorId: z.string().min(1),
+    options: z.record(z.string(), z.unknown()).optional(),
   }),
 ]);
 export type GeneratorRef = z.infer<typeof generatorRefSchema>;
@@ -144,6 +174,8 @@ export const customGeneratorSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   code: z.string(),
+  /** Optional knobs the generator's own code can read off `options.*`; see `generatorOptionFieldSchema`. */
+  optionsSchema: z.array(generatorOptionFieldSchema).default([]),
 });
 export type CustomGenerator = z.infer<typeof customGeneratorSchema>;
 

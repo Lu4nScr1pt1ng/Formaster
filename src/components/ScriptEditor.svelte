@@ -9,6 +9,7 @@
   import HourglassIcon from 'phosphor-svelte/lib/HourglassIcon';
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
   import SignOutIcon from 'phosphor-svelte/lib/SignOutIcon';
+  import SlidersHorizontalIcon from 'phosphor-svelte/lib/SlidersHorizontalIcon';
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
   import TimerIcon from 'phosphor-svelte/lib/TimerIcon';
   import XIcon from 'phosphor-svelte/lib/XIcon';
@@ -24,6 +25,8 @@
   import {
     formScriptSchema,
     formatValidationError,
+    generatorOptionFieldSchema,
+    type CustomGenerator,
     type DelayStep,
     type FieldMapping,
     type FormScript,
@@ -40,9 +43,11 @@
     onDelete: (id: string) => void;
     onExport: (script: FormScript) => void;
     onDuplicate: (script: FormScript) => void;
+    /** Off in the Playground: there's no real tab to reopen the picker on, so the button can't do anything there. */
+    showAddFieldsFromPage?: boolean;
   }
 
-  let { script, onSave, onDelete, onExport, onDuplicate }: Props = $props();
+  let { script, onSave, onDelete, onExport, onDuplicate, showAddFieldsFromPage = true }: Props = $props();
 
   // Local editable copy so navigating away without saving doesn't mutate storage.
   // `script` is itself a reactive $state proxy; $state.snapshot() resolves it to an
@@ -81,6 +86,29 @@
   let jsonError = $state<string | null>(null);
   let isJsonEdit = $state(false);
 
+  // Options-schema editors are opt-in (collapsed) unless the generator
+  // already has one — most custom generators never need this.
+  // svelte-ignore state_referenced_locally
+  let expandedGeneratorOptions = $state(new Set(draft.customGenerators.filter((g) => g.optionsSchema.length > 0).map((g) => g.id)));
+  let generatorOptionsError = $state<Record<string, string | null>>({});
+
+  function toggleGeneratorOptions(id: string): void {
+    const next = new Set(expandedGeneratorOptions);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    expandedGeneratorOptions = next;
+  }
+
+  function setGeneratorOptionsSchemaText(generator: CustomGenerator, text: string): void {
+    try {
+      const parsed = generatorOptionFieldSchema.array().parse(JSON.parse(text || '[]'));
+      generator.optionsSchema = parsed;
+      generatorOptionsError = { ...generatorOptionsError, [generator.id]: null };
+    } catch (error) {
+      generatorOptionsError = { ...generatorOptionsError, [generator.id]: formatValidationError(error) };
+    }
+  }
+
   $effect(() => {
     const serialized = JSON.stringify(draft, null, 2);
     if (!isJsonEdit) jsonText = serialized;
@@ -100,7 +128,7 @@
   function addCustomGenerator(): void {
     draft.customGenerators = [
       ...draft.customGenerators,
-      { id: crypto.randomUUID(), name: `Generator ${draft.customGenerators.length + 1}`, code: 'return "value";' },
+      { id: crypto.randomUUID(), name: `Generator ${draft.customGenerators.length + 1}`, code: 'return "value";', optionsSchema: [] },
     ];
   }
 
@@ -143,6 +171,7 @@
       id: crypto.randomUUID(),
       name: `Generator ${draft.customGenerators.length + 1}`,
       code: 'return "value";',
+      optionsSchema: [],
     };
     draft.customGenerators = [...draft.customGenerators, newGenerator];
     updateField(index, { ...step.field, generator: { kind: 'custom', generatorId: newGenerator.id } });
@@ -224,7 +253,7 @@
     if (ref.kind === 'fixed') return ref.value;
     const generator = draft.customGenerators.find((entry) => entry.id === ref.generatorId);
     if (!generator) throw new Error('No custom generator selected');
-    return runCustomCode(generator.code, undefined, context, generatorRunContext);
+    return runCustomCode(generator.code, ref.options, context, generatorRunContext);
   }
 
   /**
@@ -336,7 +365,7 @@
         class="pointer-events-none ml-1.5 shrink-0 text-ink-3 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
       />
     </div>
-    <div class="flex flex-wrap justify-end gap-2">
+    <div class="flex flex-wrap gap-2">
       <button
         type="button"
         class="flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
@@ -383,10 +412,9 @@
           Save
         {/if}
       </button>
-      <div class="mx-0.5 w-px self-stretch bg-hair"></div>
       <button
         type="button"
-        class="flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
+        class="ml-2 flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
         title="Close without saving"
         onclick={closeEditor}
       >
@@ -411,14 +439,16 @@
           <label class="block text-[11px] font-semibold uppercase tracking-wider text-ink-3" for="url-patterns">
             URL patterns (one per line)
           </label>
-          <button
-            type="button"
-            class="flex items-center gap-1.5 rounded-md border border-dashed border-accent-500/45 px-2 py-1 text-xs font-medium text-accent-500 transition hover:bg-accent-500/10"
-            onclick={addFieldsFromPage}
-          >
-            <CursorClickIcon size={12} weight="bold" />
-            Add fields from page
-          </button>
+          {#if showAddFieldsFromPage}
+            <button
+              type="button"
+              class="flex items-center gap-1.5 rounded-md border border-dashed border-accent-500/45 px-2 py-1 text-xs font-medium text-accent-500 transition hover:bg-accent-500/10"
+              onclick={addFieldsFromPage}
+            >
+              <CursorClickIcon size={12} weight="bold" />
+              Add fields from page
+            </button>
+          {/if}
         </div>
         <textarea
           id="url-patterns"
@@ -463,8 +493,12 @@
         </div>
         {#if draft.steps.length === 0}
           <p class="text-sm text-ink-3">
-            No fields mapped yet. Use "Add fields from page" above, "Add field" to write one by hand, or "Map fields
-            on this page" from the popup.
+            {#if showAddFieldsFromPage}
+              No fields mapped yet. Use "Add fields from page" above, "Add field" to write one by hand, or "Map fields
+              on this page" from the popup.
+            {:else}
+              No fields mapped yet. Use "Add field" to write one by hand.
+            {/if}
           </p>
         {:else}
           <div class="space-y-2">
@@ -572,6 +606,35 @@
                   onChange={(value) => (generator.code = value)}
                   minHeight="5rem"
                 />
+
+                <button
+                  type="button"
+                  class="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-ink-3 transition hover:text-accent-500"
+                  onclick={() => toggleGeneratorOptions(generator.id)}
+                >
+                  <SlidersHorizontalIcon size={11} weight="bold" />
+                  Options schema
+                  {generator.optionsSchema.length > 0 ? `(${generator.optionsSchema.length})` : ''}
+                </button>
+                {#if expandedGeneratorOptions.has(generator.id)}
+                  <div class="mt-1.5">
+                    <p class="mb-1.5 text-[11px] text-ink-3">
+                      JSON list of knobs this generator exposes on <code class="font-mono text-ink-2">options.*</code> — each
+                      field using it gets a matching control. E.g. <code class="font-mono text-ink-2"
+                        >[&#123;"key":"length","type":"number","label":"Length","default":16&#125;]</code
+                      >.
+                    </p>
+                    <CodeEditor
+                      value={JSON.stringify(generator.optionsSchema, null, 2)}
+                      language="json"
+                      onChange={(value) => setGeneratorOptionsSchemaText(generator, value)}
+                      minHeight="3rem"
+                    />
+                    {#if generatorOptionsError[generator.id]}
+                      <p class="mt-1 text-[11px] text-red-400">{generatorOptionsError[generator.id]}</p>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>

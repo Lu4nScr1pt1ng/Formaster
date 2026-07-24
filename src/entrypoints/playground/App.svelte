@@ -50,13 +50,14 @@
   // direct approach.
   async function runCustomGeneratorInPage(
     generatorId: string,
+    options: Record<string, unknown> | undefined,
     activeScript: FormScript,
     context: FieldValueContext,
     generatorRunContext: GeneratorRunContext,
   ): Promise<string | number | boolean> {
     const generator = activeScript.customGenerators.find((entry) => entry.id === generatorId);
     if (!generator) throw new Error(`Custom generator "${generatorId}" not found`);
-    return runCustomCode(generator.code, undefined, context, generatorRunContext);
+    return runCustomCode(generator.code, options, context, generatorRunContext);
   }
 
   async function runOnForm(): Promise<void> {
@@ -196,7 +197,14 @@
     >
       {#if script}
         {#key script.id}
-          <ScriptEditor {script} onSave={handleSave} onDelete={handleDelete} onExport={handleExport} onDuplicate={handleDuplicate} />
+          <ScriptEditor
+            {script}
+            onSave={handleSave}
+            onDelete={handleDelete}
+            onExport={handleExport}
+            onDuplicate={handleDuplicate}
+            showAddFieldsFromPage={false}
+          />
         {/key}
       {:else}
         <div class="flex h-full flex-col items-center justify-center gap-3 text-sm text-ink-3">

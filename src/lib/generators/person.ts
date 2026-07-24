@@ -12,6 +12,18 @@ const LAST_NAMES = [
   'Almeida', 'Lopes', 'Soares', 'Fernandes', 'Vieira', 'Barbosa',
 ];
 
+const US_FIRST_NAMES = [
+  'James', 'Mary', 'John', 'Patricia', 'Robert', 'Jennifer', 'Michael', 'Linda',
+  'William', 'Elizabeth', 'David', 'Barbara', 'Richard', 'Susan', 'Joseph',
+  'Jessica', 'Thomas', 'Sarah', 'Charles', 'Karen', 'Daniel', 'Nancy',
+];
+
+const US_LAST_NAMES = [
+  'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis',
+  'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson',
+  'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin',
+];
+
 const STREET_PREFIXES = ['Rua', 'Avenida', 'Alameda', 'Travessa'];
 const STREET_NAMES = [
   'das Flores', 'Brasil', 'Sao Paulo', 'das Acacias', 'dos Ipes',
@@ -19,19 +31,26 @@ const STREET_NAMES = [
 ];
 
 const AREA_CODES = ['11', '21', '31', '41', '51', '61', '71', '81', '85', '91'];
+const US_AREA_CODES = ['212', '310', '312', '415', '512', '617', '702', '718', '818', '917'];
 
 const COMPANY_SUFFIXES = ['Tecnologia', 'Comercio', 'Solucoes', 'Servicos', 'Industria', 'Consultoria'];
 
-export function generateFirstName(): string {
-  return pick(FIRST_NAMES);
+export interface NameOptions {
+  locale?: 'br' | 'us';
 }
 
-export function generateLastName(): string {
-  return pick(LAST_NAMES);
+export function generateFirstName({ locale = 'br' }: NameOptions = {}): string {
+  return pick(locale === 'us' ? US_FIRST_NAMES : FIRST_NAMES);
 }
 
-export function generateFullName(): string {
-  return `${generateFirstName()} ${generateLastName()} ${generateLastName()}`;
+export function generateLastName({ locale = 'br' }: NameOptions = {}): string {
+  return pick(locale === 'us' ? US_LAST_NAMES : LAST_NAMES);
+}
+
+export function generateFullName({ locale = 'br' }: NameOptions = {}): string {
+  // BR names conventionally carry two surnames; US ones just one.
+  const surnames = locale === 'us' ? generateLastName({ locale }) : `${generateLastName({ locale })} ${generateLastName({ locale })}`;
+  return `${generateFirstName({ locale })} ${surnames}`;
 }
 
 export function generateEmail(nameHint?: string): string {
@@ -46,9 +65,17 @@ export function generateEmail(nameHint?: string): string {
 
 export interface PhoneOptions {
   masked?: boolean;
+  locale?: 'br' | 'us';
 }
 
-export function generatePhoneBr({ masked = true }: PhoneOptions = {}): string {
+export function generatePhoneBr({ masked = true, locale = 'br' }: PhoneOptions = {}): string {
+  if (locale === 'us') {
+    const area = pick(US_AREA_CODES);
+    const exchange = randomDigits(3).join('');
+    const line = randomDigits(4).join('');
+    if (!masked) return `${area}${exchange}${line}`;
+    return `(${area}) ${exchange}-${line}`;
+  }
   const area = pick(AREA_CODES);
   const number = `9${randomDigits(8).join('')}`;
   if (!masked) return `${area}${number}`;

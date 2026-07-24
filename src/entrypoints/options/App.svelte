@@ -20,6 +20,7 @@
     type FormScript,
   } from '../../lib/schema/script';
   import { clearDraft, getDraft } from '../../lib/storage/draft-store';
+  import { setReturnTabId } from '../../lib/storage/return-tab-store';
   import { deleteScript, exportScript, listScripts, saveScript } from '../../lib/storage/scripts-store';
   import { pushToast } from '../../lib/toast/toast-store.svelte';
   import { suggestScriptTarget } from '../../lib/url-match';
@@ -71,17 +72,21 @@
       scripts = [...scripts, script];
       selectedId = script.id;
       await clearDraft();
-      return;
+    } else {
+      // Deep link from the popup's "Edit" button: ?script=<id>
+      const requestedId = new URLSearchParams(location.search).get('script');
+      if (requestedId && scripts.some((script) => script.id === requestedId)) {
+        selectedId = requestedId;
+      } else if (scripts.length > 0) {
+        selectedId = scripts[0].id;
+      }
     }
 
-    // Deep link from the popup's "Edit" button: ?script=<id>
-    const requestedId = new URLSearchParams(location.search).get('script');
-    if (requestedId && scripts.some((script) => script.id === requestedId)) {
-      selectedId = requestedId;
-    } else if (scripts.length > 0) {
-      selectedId = scripts[0].id;
-    }
-
+    // Registered unconditionally (not just in the no-draft branch above) —
+    // this tab needs to hear "scripts/refresh" for as long as it's open,
+    // regardless of how it was first opened (e.g. a script created from a
+    // draft here today still needs to live-update later from "Add fields
+    // from page" run from this same tab).
     browser.runtime.onMessage.addListener((message: RuntimeMessage) => {
       if (message.type === 'scripts/refresh') {
         void refreshAndSelect(message.scriptId);
@@ -102,8 +107,13 @@
     selectedId = script.id;
   }
 
-  function openPlayground(): void {
-    browser.tabs.create({ url: browser.runtime.getURL('/playground.html') });
+  async function openPlayground(): Promise<void> {
+    // So the playground's embedded editor's "Close"/"Save & close" can jump
+    // back to this exact tab instead of just closing to whatever was
+    // underneath (see `ScriptEditor.closeEditor` / `return-tab-store.ts`).
+    const currentTab = await browser.tabs.getCurrent();
+    if (currentTab?.id != null) await setReturnTabId(currentTab.id);
+    await browser.tabs.create({ url: browser.runtime.getURL('/playground.html') });
   }
 
   function handleDuplicate(script: FormScript): void {

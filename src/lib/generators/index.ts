@@ -10,7 +10,9 @@ import {
   generateFullName,
   generateLastName,
   generatePhoneBr,
+  type NameOptions,
 } from './person';
+import { generatePassword } from './password';
 import { generateBoolean, generateDecimal, generateInteger, generateLorem, generateUuid } from './misc';
 import { generateCreditCardCvc, generateCreditCardExpiry, generateCreditCardNumber } from './credit-card';
 import {
@@ -19,18 +21,29 @@ import {
   generateAddressNeighborhoodBr,
   generateAddressStateBr,
 } from './address-br';
+import {
+  generateAddressCityUs,
+  generateAddressNeighborhoodUs,
+  generateAddressStateUs,
+  generateAddressStreetUs,
+  generateAddressZipUs,
+} from './address-us';
 
 export type GeneratorOptions = Record<string, unknown>;
 /**
  * `runContext` is a mutable bag shared by every builtin generator called
  * within the same fill run (see `fillScript()`), scoped there and back —
- * it exists so a handful of related generators (currently the BR address
- * quartet: cep/city/state/neighborhood) can agree with each other instead
- * of each independently picking its own random value. Most generators
- * ignore it entirely.
+ * it exists so a handful of related generators (currently the BR and US
+ * address quartets: cep/zip + city + state + neighborhood) can agree with
+ * each other instead of each independently picking its own random value.
+ * Most generators ignore it entirely.
  */
 export type GeneratorRunContext = Record<string, unknown>;
 export type GeneratorFn = (options?: GeneratorOptions, runContext?: GeneratorRunContext) => string | number | boolean;
+
+function isUsLocale(options?: GeneratorOptions): boolean {
+  return options?.locale === 'us';
+}
 
 export const BUILTIN_GENERATORS: Record<BuiltinGeneratorId, GeneratorFn> = {
   cpf: (options) => generateCpf(options),
@@ -38,19 +51,21 @@ export const BUILTIN_GENERATORS: Record<BuiltinGeneratorId, GeneratorFn> = {
   rg: (options) => generateRg(options),
   passport: () => generatePassport(),
   phoneBr: (options) => generatePhoneBr(options),
-  cep: (options, ctx) => generateAddressCepBr(options, ctx),
-  fullName: () => generateFullName(),
-  firstName: () => generateFirstName(),
-  lastName: () => generateLastName(),
+  cep: (options, ctx) => (isUsLocale(options) ? generateAddressZipUs(options, ctx) : generateAddressCepBr(options, ctx)),
+  fullName: (options) => generateFullName(options as NameOptions),
+  firstName: (options) => generateFirstName(options as NameOptions),
+  lastName: (options) => generateLastName(options as NameOptions),
   email: () => generateEmail(),
   birthdate: (options) => generateBirthdate(options),
-  addressStreet: () => generateAddressStreet(),
+  addressStreet: (options) => (isUsLocale(options) ? generateAddressStreetUs() : generateAddressStreet()),
   addressNumber: () => generateAddressNumber(),
-  addressCity: (_options, ctx) => generateAddressCityBr(undefined, ctx),
-  addressState: (_options, ctx) => generateAddressStateBr(undefined, ctx),
-  addressNeighborhood: (_options, ctx) => generateAddressNeighborhoodBr(undefined, ctx),
+  addressCity: (options, ctx) => (isUsLocale(options) ? generateAddressCityUs(undefined, ctx) : generateAddressCityBr(undefined, ctx)),
+  addressState: (options, ctx) => (isUsLocale(options) ? generateAddressStateUs(undefined, ctx) : generateAddressStateBr(undefined, ctx)),
+  addressNeighborhood: (options, ctx) =>
+    isUsLocale(options) ? generateAddressNeighborhoodUs(undefined, ctx) : generateAddressNeighborhoodBr(undefined, ctx),
   company: () => generateCompany(),
   uuid: () => generateUuid(),
+  password: (options) => generatePassword(options),
   integer: (options) => generateInteger(options),
   decimal: (options) => generateDecimal(options),
   boolean: (options) => generateBoolean(options),
@@ -69,8 +84,8 @@ export const BUILTIN_GENERATOR_LABELS: Record<BuiltinGeneratorId, string> = {
   cnpj: 'CNPJ',
   rg: 'RG',
   passport: 'Passport',
-  phoneBr: 'Phone (BR)',
-  cep: 'CEP',
+  phoneBr: 'Phone',
+  cep: 'Postal code',
   fullName: 'Full name',
   firstName: 'First name',
   lastName: 'Last name',
@@ -83,6 +98,7 @@ export const BUILTIN_GENERATOR_LABELS: Record<BuiltinGeneratorId, string> = {
   addressNeighborhood: 'Neighborhood',
   company: 'Company',
   uuid: 'UUID',
+  password: 'Password',
   integer: 'Integer',
   decimal: 'Decimal',
   boolean: 'Boolean',

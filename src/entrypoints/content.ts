@@ -44,7 +44,7 @@ export default defineContentScript({
     }
 
     async function runFillScript(script: FormScript) {
-      const results = await fillScript(script, async (generatorId, activeScript, context, generatorRunContext) => {
+      const results = await fillScript(script, async (generatorId, options, activeScript, context, generatorRunContext) => {
         const generator = activeScript.customGenerators.find((entry) => entry.id === generatorId);
         if (!generator) throw new Error(`Custom generator "${generatorId}" not found`);
         // Delegated to the background script rather than run here: the QuickJS
@@ -54,6 +54,7 @@ export default defineContentScript({
         const response = (await browser.runtime.sendMessage({
           type: 'customGenerator/run',
           code: generator.code,
+          options,
           fields: context,
           runContext: generatorRunContext,
         } satisfies RuntimeMessage)) as CustomGeneratorRunResult;
