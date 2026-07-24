@@ -1,5 +1,11 @@
 import { runCustomCode } from '../lib/generators/quickjs-runner';
-import type { CustomGeneratorRunResult, FillFieldResult, PickedField, RuntimeMessage } from '../lib/messaging/types';
+import type {
+  CustomGeneratorRunResult,
+  ExistingPickedField,
+  FillFieldResult,
+  PickedField,
+  RuntimeMessage,
+} from '../lib/messaging/types';
 import { setDraft } from '../lib/storage/draft-store';
 import { clearPendingPickerScriptId, getPendingPickerScriptId, setPendingPickerScriptId } from '../lib/storage/pending-picker-store';
 import { setReturnTabId } from '../lib/storage/return-tab-store';
@@ -12,7 +18,7 @@ const RESULT_BADGE_COLOR = '#10b981';
 export default defineBackground(() => {
   browser.runtime.onMessage.addListener((message: RuntimeMessage, sender) => {
     if (message.type === 'picker/finished') {
-      void handlePickerFinished(message.pageUrl, message.fields, sender.tab?.id);
+      void handlePickerFinished(message.pageUrl, message.fields, message.removedFieldIds, sender.tab?.id);
     } else if (message.type === 'picker/start-for-script') {
       void handleStartForScript(message.scriptId, message.urlPatterns);
     } else if (message.type === 'fill/result') {
@@ -79,7 +85,12 @@ export default defineBackground(() => {
 
     if (targetTabId == null) return;
     await setPendingPickerScriptId(scriptId);
-    await browser.tabs.sendMessage(targetTabId, { type: 'picker/start' } satisfies RuntimeMessage);
+    const script = await getScript(scriptId);
+    const existingFields: ExistingPickedField[] =
+      script?.steps
+        .filter((step) => step.type === 'field')
+        .map((step) => ({ id: step.field.id, selectors: step.field.selectors })) ?? [];
+    await browser.tabs.sendMessage(targetTabId, { type: 'picker/start', existingFields } satisfies RuntimeMessage);
   }
 
   function waitForTabComplete(tabId: number | undefined): Promise<void> {
@@ -97,7 +108,12 @@ export default defineBackground(() => {
     });
   }
 
-  async function handlePickerFinished(pageUrl: string, fields: PickedField[], sourceTabId: number | undefined): Promise<void> {
+  async function handlePickerFinished(
+    pageUrl: string,
+    fields: PickedField[],
+    removedFieldIds: string[] | undefined,
+    sourceTabId: number | undefined,
+  ): Promise<void> {
     // Remember the page just picked from, so a "Close" click in the options
     // tab this opens/focuses can jump straight back to it.
     if (sourceTabId != null) await setReturnTabId(sourceTabId);
@@ -107,8 +123,12 @@ export default defineBackground(() => {
       await clearPendingPickerScriptId();
       const script = await getScript(pendingScriptId);
       if (script) {
+        const remainingSteps =
+          removedFieldIds && removedFieldIds.length > 0
+            ? script.steps.filter((step) => step.type !== 'field' || !removedFieldIds.includes(step.field.id))
+            : script.steps;
         script.steps = [
-          ...script.steps,
+          ...remainingSteps,
           ...fields.map((field) => ({
             type: 'field' as const,
             field: {

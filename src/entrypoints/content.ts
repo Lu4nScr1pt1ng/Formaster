@@ -1,5 +1,5 @@
 import { fillScript } from '../lib/filler/fill-script';
-import type { CustomGeneratorRunResult, PickedField, RuntimeMessage } from '../lib/messaging/types';
+import type { CustomGeneratorRunResult, ExistingPickedField, PickedField, RuntimeMessage } from '../lib/messaging/types';
 import { PickerOverlay } from '../lib/picker/overlay';
 import type { FormScript } from '../lib/schema/script';
 
@@ -8,29 +8,39 @@ export default defineContentScript({
   main() {
     let overlay: PickerOverlay | null = null;
     let pickedFields: PickedField[] = [];
+    let removedExistingFieldIds: string[] = [];
 
-    function startPicker(): void {
+    function startPicker(existingFields?: ExistingPickedField[]): void {
       overlay?.stop();
       pickedFields = [];
+      removedExistingFieldIds = [];
       overlay = new PickerOverlay(
         (field) => {
           pickedFields.push(field);
         },
+        (field) => {
+          pickedFields = pickedFields.filter((entry) => entry !== field);
+        },
+        (id) => {
+          removedExistingFieldIds.push(id);
+        },
         () => finishPicking(),
       );
-      overlay.start();
+      overlay.start(existingFields);
     }
 
     function finishPicking(): void {
       overlay?.stop();
       overlay = null;
-      if (pickedFields.length === 0) return;
+      if (pickedFields.length === 0 && removedExistingFieldIds.length === 0) return;
       browser.runtime.sendMessage({
         type: 'picker/finished',
         fields: pickedFields,
+        removedFieldIds: removedExistingFieldIds,
         pageUrl: location.href,
       } satisfies RuntimeMessage);
       pickedFields = [];
+      removedExistingFieldIds = [];
     }
 
     async function runFillScript(script: FormScript) {
@@ -62,7 +72,7 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener((message: RuntimeMessage) => {
       switch (message.type) {
         case 'picker/start':
-          startPicker();
+          startPicker(message.existingFields);
           return;
         case 'fill/run':
           // Returning the promise sends the fill results back as the reply

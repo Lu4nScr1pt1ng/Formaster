@@ -3,8 +3,8 @@ import type { FieldElementType, FormScript, SelectorCandidate } from '../schema/
 
 /** Runtime messages passed between background, content script, popup, and options. */
 export type RuntimeMessage =
-  | { type: 'picker/start' }
-  | { type: 'picker/finished'; fields: PickedField[]; pageUrl: string }
+  | { type: 'picker/start'; existingFields?: ExistingPickedField[] }
+  | { type: 'picker/finished'; fields: PickedField[]; removedFieldIds?: string[]; pageUrl: string }
   | { type: 'picker/start-for-script'; scriptId: string; urlPatterns: string[] }
   | { type: 'fill/run'; script: FormScript }
   | { type: 'fill/result'; results: FillFieldResult[] }
@@ -30,6 +30,12 @@ export interface PickedField {
   selectors: SelectorCandidate[];
   elementType: FieldElementType;
   label?: string;
+}
+
+/** A script's already-saved field, sent to the picker so it can pre-mark the matching element as mapped. */
+export interface ExistingPickedField {
+  id: string;
+  selectors: SelectorCandidate[];
 }
 
 export interface FillFieldResult {

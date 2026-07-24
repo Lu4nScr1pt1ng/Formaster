@@ -520,11 +520,19 @@
         </div>
         {#if draft.customGenerators.length === 0}
           <p class="text-sm text-ink-3">
-            Write your own JS: <code class="font-mono text-ink-2">(helpers, options, fields) =&gt; value</code>. Runs
-            sandboxed, with access to the built-in generators via <code class="font-mono text-ink-2">helpers</code> and
-            every field filled earlier in this script via <code class="font-mono text-ink-2">fields</code> (e.g.
-            <code class="font-mono text-ink-2">fields.firstName</code>). <code class="font-mono text-ink-2">options</code>
-            is always an empty object today — there's no way yet to configure a custom generator's own options.
+            Write the <strong class="text-ink-2">body</strong> of a sandboxed JS function — <code
+              class="font-mono text-ink-2">helpers</code
+            >, <code class="font-mono text-ink-2">options</code>, and <code class="font-mono text-ink-2">fields</code> are
+            already in scope, you just <code class="font-mono text-ink-2">return</code> a value. <code
+              class="font-mono text-ink-2">helpers</code
+            >
+            gives you every built-in generator (e.g. <code class="font-mono text-ink-2">helpers.cpf()</code>), <code
+              class="font-mono text-ink-2">fields</code
+            >
+            holds every field filled earlier in this script (e.g. <code class="font-mono text-ink-2"
+              >fields.firstName</code
+            >). <code class="font-mono text-ink-2">options</code> is always an empty object today — there's no way yet to
+            configure a custom generator's own options.
           </p>
         {:else}
           <div class="space-y-3">
@@ -550,6 +558,14 @@
                     <TrashIcon size={13} weight="bold" />
                   </button>
                 </div>
+                <p class="mb-1.5 text-[11px] text-ink-3">
+                  Function body — <code class="font-mono text-ink-2">helpers</code>, <code class="font-mono text-ink-2"
+                    >options</code
+                  >, <code class="font-mono text-ink-2">fields</code> are in scope, <code class="font-mono text-ink-2"
+                    >return</code
+                  > a string/number/boolean. E.g. <code class="font-mono text-ink-2">return helpers.cpf();</code> or
+                  <code class="font-mono text-ink-2">return fields.firstName + "@example.com";</code>
+                </p>
                 <CodeEditor
                   value={generator.code}
                   language="javascript"
