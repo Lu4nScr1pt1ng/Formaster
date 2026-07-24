@@ -563,10 +563,13 @@
             gives you every built-in generator (e.g. <code class="font-mono text-ink-2">helpers.cpf()</code>), <code
               class="font-mono text-ink-2">fields</code
             >
-            holds every field filled earlier in this script (e.g. <code class="font-mono text-ink-2"
-              >fields.firstName</code
-            >). <code class="font-mono text-ink-2">options</code> is always an empty object today — there's no way yet to
-            configure a custom generator's own options.
+            holds every field filled earlier in this script, keyed by that field's <strong class="text-ink-2"
+              >label</strong
+            >
+            camelCased — a field labeled "Senha" is <code class="font-mono text-ink-2">fields.senha</code>, "Confirmar
+            Senha" is <code class="font-mono text-ink-2">fields.confirmarSenha</code>. <code class="font-mono text-ink-2"
+              >options</code
+            > is always an empty object today — there's no way yet to configure a custom generator's own options.
           </p>
         {:else}
           <div class="space-y-3">
@@ -599,6 +602,9 @@
                     >return</code
                   > a string/number/boolean. E.g. <code class="font-mono text-ink-2">return helpers.cpf();</code> or
                   <code class="font-mono text-ink-2">return fields.firstName + "@example.com";</code>
+                  <code class="font-mono text-ink-2">fields</code> keys are each earlier field's <strong
+                    class="text-ink-2">label</strong
+                  > camelCased — "Senha" → <code class="font-mono text-ink-2">fields.senha</code>.
                 </p>
                 <CodeEditor
                   value={generator.code}
