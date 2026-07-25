@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import BookOpenIcon from 'phosphor-svelte/lib/BookOpenIcon';
   import FlaskIcon from 'phosphor-svelte/lib/FlaskIcon';
   import ListIcon from 'phosphor-svelte/lib/ListIcon';
   import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon';
@@ -94,6 +95,10 @@
     const currentTab = await browser.tabs.getCurrent();
     if (currentTab?.id != null) await setReturnTabId(currentTab.id);
     await browser.tabs.create({ url: browser.runtime.getURL('/playground.html') });
+  }
+
+  async function openDocs(): Promise<void> {
+    await browser.tabs.create({ url: browser.runtime.getURL('/docs.html') });
   }
 
   function handleDuplicate(script: FormScript): void {
@@ -202,14 +207,22 @@
       </button>
     </div>
 
-    <div class="px-4 pb-3">
+    <div class="flex gap-2 px-4 pb-3">
       <button
         type="button"
-        class="flex w-full items-center justify-center gap-1.5 rounded-lg border border-hair px-2 py-1.5 text-xs transition active:scale-[0.97] hover:bg-surface-hover"
+        class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-hair px-2 py-1.5 text-xs transition active:scale-[0.97] hover:bg-surface-hover"
         onclick={openPlayground}
       >
         <FlaskIcon size={13} weight="bold" />
-        Open playground
+        Playground
+      </button>
+      <button
+        type="button"
+        class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-hair px-2 py-1.5 text-xs transition active:scale-[0.97] hover:bg-surface-hover"
+        onclick={openDocs}
+      >
+        <BookOpenIcon size={13} weight="bold" />
+        Docs
       </button>
     </div>
 

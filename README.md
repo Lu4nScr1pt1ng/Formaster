@@ -81,6 +81,11 @@ field type, wired to a ready-to-run example script, with nothing to set up.
   two non-native "custom" widgets, wired to a ready-to-run example script.
   Lets you test mapping, generators, and conditional waits without needing a
   real site, and tweak/run scripts against a local form.
+- **Documentation** (opened from the popup or the script library) — a bundled,
+  searchable reference covering field mapping and selectors, delay/conditional
+  wait steps, every built-in generator and its options, writing custom
+  generators, referencing earlier fields from one, and the full script JSON
+  shape for hand-authoring or generating scripts programmatically.
 - **Custom generators** run inside a QuickJS WASM VM (`src/lib/generators/quickjs-runner.ts`),
   a real interpreted sandbox with no access to the page, the extension, or
   any browser API. Generator code is the *body* of a function receiving
@@ -94,8 +99,8 @@ field type, wired to a ready-to-run example script, with nothing to set up.
   Chrome always blocks and modern Firefox blocks outside a sandboxed page it
   doesn't even support.
 
-The whole UI (popup, options, playground) is responsive down to a ~300px-wide
-viewport — narrow sidebars collapse into drawers, toolbars wrap instead of
+The whole UI (popup, options, playground, docs) is responsive down to a
+~300px-wide viewport — narrow sidebars collapse into drawers, toolbars wrap instead of
 overflowing, and side-by-side panels stack.
 
 ## Installation

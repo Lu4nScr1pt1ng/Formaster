@@ -41,16 +41,23 @@ section for the exact steps and version requirements.
 
 ## Where things live
 
-- `src/entrypoints/` — the four surfaces WXT builds separately:
-  `background.ts` (service worker: picker lifecycle, badge, custom-generator
-  execution), `content.ts` (injected into every page: runs the picker overlay
-  and the actual fill), and the three UI pages — `popup/`, `options/`
-  (the script library), `playground/`.
+- `src/entrypoints/` — the surfaces WXT builds separately: `background.ts`
+  (service worker: picker lifecycle, badge, custom-generator execution),
+  `content.ts` (injected into every page: runs the picker overlay and the
+  actual fill), and four UI pages — `popup/`, `options/` (the script
+  library), `playground/`, `docs/` (the user-facing scripting reference).
 - `src/components/` — the Svelte components shared across those pages, mainly
   `ScriptEditor.svelte` (the script/field editor, used identically by both
   Options and the Playground) and its children (`FieldRow.svelte`,
   `WaitForStepRow.svelte`, `DelayStepRow.svelte`, `GeneratorOptionsEditor.svelte`,
-  `SearchableSelect.svelte`, `CodeEditor.svelte`).
+  `SearchableSelect.svelte`, `CodeEditor.svelte`); `src/components/docs/` is the
+  docs page's own small set of block-rendering components.
+- `src/lib/docs/` — the docs page's content: `content.ts` is the actual text
+  (structured as typed blocks, not markdown — no parser dependency), `search.ts`
+  is the client-side search over it, `inline.ts` is the tiny `` `code` ``/`**bold**`/
+  `[link](#anchor)` inline-formatting parser both of those use. Keep new
+  documentation *content* changes to `content.ts` — the rendering components
+  shouldn't need to change for that.
 - `src/lib/schema/script.ts` — the Zod schema for a script, and the single
   source of truth for its shape. Every other part of the codebase (the
   filler, the editor, import/export, storage) works off types inferred from

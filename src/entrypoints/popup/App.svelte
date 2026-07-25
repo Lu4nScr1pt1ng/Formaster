@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import BookOpenIcon from 'phosphor-svelte/lib/BookOpenIcon';
   import CheckCircleIcon from 'phosphor-svelte/lib/CheckCircleIcon';
   import CursorClickIcon from 'phosphor-svelte/lib/CursorClickIcon';
   import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon';
@@ -82,6 +83,10 @@
     await browser.runtime.openOptionsPage();
   }
 
+  async function openDocs(): Promise<void> {
+    await browser.tabs.create({ url: browser.runtime.getURL('/docs.html') });
+  }
+
   // A blank, saved script scoped to this page's URL pattern instead of
   // "*://*/*" — saved for real (not stashed as a draft for the options tab
   // to notice) so the ?script= deep link below always finds it immediately.
@@ -114,6 +119,15 @@
     <button
       type="button"
       class="ml-auto flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-lg text-ink-3 transition hover:bg-surface-hover hover:text-ink-1"
+      title="Open documentation"
+      aria-label="Open documentation"
+      onclick={openDocs}
+    >
+      <BookOpenIcon size={15} weight="bold" />
+    </button>
+    <button
+      type="button"
+      class="flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-lg text-ink-3 transition hover:bg-surface-hover hover:text-ink-1"
       title="Open script library"
       aria-label="Open script library"
       onclick={openLibrary}

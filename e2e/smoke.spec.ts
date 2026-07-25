@@ -18,3 +18,16 @@ test('playground loads, seeds its example script, with no uncaught errors', asyn
   await expect(playground.locator('text=Fields (26)')).toBeVisible();
   expect(pageErrors).toEqual([]);
 });
+
+test('docs page loads and search finds a known section, with no uncaught errors', async ({ openDocs, pageErrors }) => {
+  const docs = await openDocs();
+  await expect(docs.locator('h2', { hasText: 'What a script is' })).toBeVisible();
+
+  await docs.getByPlaceholder('Search the docs… (/)').fill('waitFor');
+  const result = docs.locator('button', { hasText: 'Conditional wait steps' });
+  await expect(result).toBeVisible();
+  await result.click();
+  await expect(docs.locator('h2', { hasText: 'Conditional wait steps' })).toBeInViewport();
+
+  expect(pageErrors).toEqual([]);
+});

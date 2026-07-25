@@ -15,6 +15,7 @@ interface ExtensionFixtures {
   openPopup(): Promise<Page>;
   openOptions(query?: string): Promise<Page>;
   openPlayground(): Promise<Page>;
+  openDocs(): Promise<Page>;
 }
 
 interface WorkerFixtures {
@@ -85,6 +86,10 @@ export const test = base.extend<ExtensionFixtures, WorkerFixtures>({
 
   openPlayground: async ({ context, extensionId, pageErrors }, use) => {
     await use(() => openExtensionPage(context, extensionId, 'playground.html', pageErrors, 'text=Playground form'));
+  },
+
+  openDocs: async ({ context, extensionId, pageErrors }, use) => {
+    await use(() => openExtensionPage(context, extensionId, 'docs.html', pageErrors, 'text=Scripting reference'));
   },
 });
 
