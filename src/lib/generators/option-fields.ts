@@ -15,6 +15,24 @@ const LOCALE_FIELD: GeneratorOptionField = {
   ],
 };
 
+/**
+ * Left as "Any" (empty string, meaning unset), a gender is picked once per
+ * script run and shared by every name/email field — see person.ts's
+ * `currentPersonRecord`. An explicit choice here pins that field (and every
+ * other one sharing the run's identity) to it.
+ */
+const GENDER_FIELD: GeneratorOptionField = {
+  key: 'gender',
+  type: 'select',
+  label: 'Gender',
+  default: '',
+  choices: [
+    { value: '', label: 'Any' },
+    { value: 'male', label: 'Male' },
+    { value: 'female', label: 'Female' },
+  ],
+};
+
 const BRAND_CHOICES = [
   { value: '', label: 'Random brand' },
   { value: 'visa', label: 'Visa' },
@@ -26,7 +44,7 @@ const BRAND_CHOICES = [
 /**
  * UI-editable options per built-in generator, mirroring each generator
  * function's own `Options` interface (see `src/lib/generators/*.ts`). Not
- * every generator has options — the ones missing here (email, uuid, …)
+ * every generator has options — the ones missing here (uuid, addressNumber, …)
  * simply take none, so no editor is shown for them.
  */
 export const BUILTIN_GENERATOR_OPTION_FIELDS: Partial<Record<BuiltinGeneratorId, GeneratorOptionField[]>> = {
@@ -35,13 +53,16 @@ export const BUILTIN_GENERATOR_OPTION_FIELDS: Partial<Record<BuiltinGeneratorId,
   rg: [MASKED_FIELD],
   phoneBr: [LOCALE_FIELD, MASKED_FIELD],
   cep: [LOCALE_FIELD, MASKED_FIELD],
-  fullName: [LOCALE_FIELD],
-  firstName: [LOCALE_FIELD],
-  lastName: [LOCALE_FIELD],
+  fullName: [LOCALE_FIELD, GENDER_FIELD],
+  firstName: [LOCALE_FIELD, GENDER_FIELD],
+  lastName: [LOCALE_FIELD, GENDER_FIELD],
+  email: [LOCALE_FIELD, GENDER_FIELD],
   addressStreet: [LOCALE_FIELD],
+  addressComplement: [LOCALE_FIELD],
   addressCity: [LOCALE_FIELD],
   addressState: [LOCALE_FIELD],
   addressNeighborhood: [LOCALE_FIELD],
+  fullAddress: [LOCALE_FIELD],
   birthdate: [
     { key: 'minAge', type: 'number', label: 'Min age', default: 18, min: 0, max: 120 },
     { key: 'maxAge', type: 'number', label: 'Max age', default: 65, min: 0, max: 120 },

@@ -1,4 +1,5 @@
-import { pick, randomDigits } from './random';
+import { pick, randomDigits, randomInt } from './random';
+import { generateAddressNumber, generateAddressStreet } from './person';
 
 /**
  * Representative central-area CEP prefix + a couple of real neighborhoods
@@ -25,6 +26,20 @@ const ADDRESS_BR_CITIES: AddressBrCity[] = [
   { city: 'Fortaleza', state: 'CE', cepPrefix: '60010', neighborhoods: ['Centro', 'Meireles', 'Aldeota'] },
   { city: 'Brasilia', state: 'DF', cepPrefix: '70040', neighborhoods: ['Asa Sul', 'Asa Norte', 'Lago Sul'] },
   { city: 'Manaus', state: 'AM', cepPrefix: '69005', neighborhoods: ['Centro', 'Adrianopolis', 'Ponta Negra'] },
+  { city: 'Goiania', state: 'GO', cepPrefix: '74015', neighborhoods: ['Centro', 'Setor Bueno', 'Setor Oeste'] },
+  { city: 'Belem', state: 'PA', cepPrefix: '66010', neighborhoods: ['Centro', 'Nazare', 'Umarizal'] },
+  { city: 'Vitoria', state: 'ES', cepPrefix: '29010', neighborhoods: ['Centro', 'Praia do Canto', 'Jardim da Penha'] },
+  { city: 'Florianopolis', state: 'SC', cepPrefix: '88010', neighborhoods: ['Centro', 'Trindade', 'Lagoa da Conceicao'] },
+  { city: 'Natal', state: 'RN', cepPrefix: '59010', neighborhoods: ['Centro', 'Ponta Negra', 'Petropolis'] },
+  { city: 'Campo Grande', state: 'MS', cepPrefix: '79002', neighborhoods: ['Centro', 'Jardim dos Estados', 'Amambai'] },
+];
+
+const COMPLEMENT_TEMPLATES: Array<() => string> = [
+  () => `Apto ${randomInt(11, 1204)}`,
+  () => `Bloco ${pick(['A', 'B', 'C', 'D'])}, Apto ${randomInt(11, 804)}`,
+  () => `Casa ${randomInt(1, 20)}`,
+  () => `Sala ${randomInt(101, 950)}`,
+  () => `Fundos`,
 ];
 
 export interface AddressBrRecord {
@@ -87,4 +102,18 @@ export function generateAddressStateBr(_options?: unknown, runContext?: Record<s
 
 export function generateAddressNeighborhoodBr(_options?: unknown, runContext?: Record<string, unknown>): string {
   return currentAddressBrRecord(runContext).neighborhood;
+}
+
+export function generateAddressComplementBr(): string {
+  return pick(COMPLEMENT_TEMPLATES)();
+}
+
+/** One formatted line combining street, number, complement, neighborhood, city, state, and CEP. */
+export function generateFullAddressBr(_options?: unknown, runContext?: Record<string, unknown>): string {
+  const { neighborhood, city, state, cep } = currentAddressBrRecord(runContext);
+  const maskedCep = `${cep.slice(0, 5)}-${cep.slice(5)}`;
+  const street = generateAddressStreet();
+  const number = generateAddressNumber();
+  const complement = generateAddressComplementBr();
+  return `${street}, ${number}, ${complement} - ${neighborhood}, ${city} - ${state}, ${maskedCep}`;
 }

@@ -84,6 +84,15 @@ const KEYWORD_RULES: Array<{ test: (h: string) => boolean; result: DetectedGener
   { test: (h) => has(h, 'state'), result: { id: 'addressState', options: { locale: 'us' } } },
   { test: (h) => has(h, 'rua', 'logradouro'), result: { id: 'addressStreet', options: { locale: 'br' } } },
   { test: (h) => has(h, 'street'), result: { id: 'addressStreet', options: { locale: 'us' } } },
+  { test: (h) => has(h, 'complemento', 'apto', 'apartamento', 'bloco'), result: { id: 'addressComplement', options: { locale: 'br' } } },
+  { test: (h) => has(h, 'complement', 'apt', 'suite', 'unit'), result: { id: 'addressComplement', options: { locale: 'us' } } },
+  // "Full address"/"endereço completo" must be checked before the bare
+  // "address"/"endereco" rule below, which would otherwise claim it first
+  // (a single-line "street address" field is far more common than one
+  // field standing in for the whole address, but when the label explicitly
+  // says "complete"/"full" it means the latter).
+  { test: (h) => h.includes('endereco completo'), result: { id: 'fullAddress', options: { locale: 'br' } } },
+  { test: (h) => h.includes('full address'), result: { id: 'fullAddress', options: { locale: 'us' } } },
   // Bare "address"/"endereco" (not "email address", which the rule above
   // already claims first) — the single most common real-world field name
   // for a street address, so worth a default despite being less specific

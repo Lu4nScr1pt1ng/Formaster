@@ -11,12 +11,27 @@ function cpfCheckDigit(digits: number[]): number {
   return remainder < 2 ? 0 : 11 - remainder;
 }
 
+/**
+ * The mod-11 algorithm assigns a "valid" pair of check digits to sequences
+ * like 111.111.111-11 too, but every real-world CPF validator (and the
+ * Receita Federal itself) explicitly rejects any all-same-digit CPF as a
+ * known-invalid placeholder. Re-rolling on that one-in-a-billion case is
+ * cheap and means "valid" here really does mean "passes validation", not
+ * just "passes the formula".
+ */
+function isAllSameDigit(digits: number[]): boolean {
+  return digits.every((digit) => digit === digits[0]);
+}
+
 export interface DocumentOptions {
   masked?: boolean;
 }
 
 export function generateCpf({ masked = true }: DocumentOptions = {}): string {
-  const base = randomDigits(9);
+  let base: number[];
+  do {
+    base = randomDigits(9);
+  } while (isAllSameDigit(base));
   const d1 = cpfCheckDigit(base);
   const d2 = cpfCheckDigit([...base, d1]);
   const digits = [...base, d1, d2];

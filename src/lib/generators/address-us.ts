@@ -1,4 +1,5 @@
-import { pick, randomDigits } from './random';
+import { pick, randomDigits, randomInt } from './random';
+import { generateAddressNumber } from './person';
 
 /**
  * Same idea as `address-br.ts`'s city table: a representative ZIP prefix per
@@ -23,10 +24,28 @@ const ADDRESS_US_CITIES: AddressUsCity[] = [
   { city: 'San Diego', state: 'CA', zipPrefix: '921', neighborhoods: ['Gaslamp Quarter', 'La Jolla', 'Pacific Beach'] },
   { city: 'Miami', state: 'FL', zipPrefix: '331', neighborhoods: ['Brickell', 'Wynwood', 'Coral Gables'] },
   { city: 'Seattle', state: 'WA', zipPrefix: '981', neighborhoods: ['Capitol Hill', 'Ballard', 'Fremont'] },
+  { city: 'Boston', state: 'MA', zipPrefix: '021', neighborhoods: ['Back Bay', 'Beacon Hill', 'South End'] },
+  { city: 'Denver', state: 'CO', zipPrefix: '802', neighborhoods: ['LoDo', 'Capitol Hill', 'Highland'] },
+  { city: 'Austin', state: 'TX', zipPrefix: '787', neighborhoods: ['Downtown', 'South Congress', 'East Austin'] },
+  { city: 'Portland', state: 'OR', zipPrefix: '972', neighborhoods: ['Pearl District', 'Alberta', 'Hawthorne'] },
+  { city: 'Atlanta', state: 'GA', zipPrefix: '303', neighborhoods: ['Midtown', 'Buckhead', 'Old Fourth Ward'] },
+  { city: 'Nashville', state: 'TN', zipPrefix: '372', neighborhoods: ['Downtown', 'East Nashville', 'The Gulch'] },
 ];
 
-const US_STREET_NAMES = ['Main', 'Oak', 'Maple', 'Cedar', 'Elm', 'Washington', 'Park', 'Sunset', 'Lake', 'Hill'];
-const US_STREET_TYPES = ['St', 'Ave', 'Blvd', 'Dr', 'Ln', 'Rd'];
+const US_STREET_NAMES = [
+  'Main', 'Oak', 'Maple', 'Cedar', 'Elm', 'Washington', 'Park', 'Sunset',
+  'Lake', 'Hill', 'Pine', 'Willow', 'Birch', 'Highland', 'Ridge', 'River',
+  'Meadow', 'Forest', 'Franklin', 'Jefferson', 'Lincoln', 'Madison', 'Spring',
+  'Chestnut',
+];
+const US_STREET_TYPES = ['St', 'Ave', 'Blvd', 'Dr', 'Ln', 'Rd', 'Ct', 'Way', 'Pl', 'Ter'];
+
+const COMPLEMENT_TEMPLATES: Array<() => string> = [
+  () => `Apt ${randomInt(1, 30)}${pick(['A', 'B', 'C', ''])}`,
+  () => `Unit ${randomInt(100, 950)}`,
+  () => `Suite ${randomInt(100, 950)}`,
+  () => `Floor ${randomInt(2, 20)}`,
+];
 
 export interface AddressUsRecord {
   city: string;
@@ -86,4 +105,17 @@ export function generateAddressNeighborhoodUs(_options?: unknown, runContext?: R
 
 export function generateAddressStreetUs(): string {
   return `${pick(US_STREET_NAMES)} ${pick(US_STREET_TYPES)}`;
+}
+
+export function generateAddressComplementUs(): string {
+  return pick(COMPLEMENT_TEMPLATES)();
+}
+
+/** One formatted line combining street, number, complement, city, state, and ZIP. */
+export function generateFullAddressUs(_options?: unknown, runContext?: Record<string, unknown>): string {
+  const { city, state, zip } = currentAddressUsRecord(runContext);
+  const street = generateAddressStreetUs();
+  const number = generateAddressNumber();
+  const complement = generateAddressComplementUs();
+  return `${number} ${street}, ${complement}, ${city}, ${state} ${zip}`;
 }

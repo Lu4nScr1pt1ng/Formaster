@@ -14,6 +14,30 @@ const BRANDS: Record<CardBrand, BrandSpec> = {
   discover: { prefixes: ['6011', '65'], length: 16 },
 };
 
+const CARD_BRANDS = Object.keys(BRANDS) as CardBrand[];
+
+function isCardBrand(value: unknown): value is CardBrand {
+  return typeof value === 'string' && (CARD_BRANDS as string[]).includes(value);
+}
+
+const RUN_CONTEXT_KEY = 'cardBrand';
+
+/**
+ * Returns the brand for the current fill run, generating and caching one on
+ * first use — same idea as the BR/US address quartets — so a number/expiry/
+ * CVC trio on the same script always agree (an Amex number paired with a
+ * 3-digit CVC would be a giveaway-fake card). An explicit `brand` option
+ * always wins and re-pins the cache for whatever comes after it.
+ */
+function currentCardBrand(brand: CardBrand | undefined, runContext?: Record<string, unknown>): CardBrand {
+  if (!runContext) return brand ?? pick(CARD_BRANDS);
+  const cached = runContext[RUN_CONTEXT_KEY];
+  if (!brand && isCardBrand(cached)) return cached;
+  const resolved = brand ?? pick(CARD_BRANDS);
+  runContext[RUN_CONTEXT_KEY] = resolved;
+  return resolved;
+}
+
 /** Standard Luhn check-digit generation for a partial number (all digits except the last). */
 function luhnCheckDigit(partial: number[]): number {
   let sum = 0;
@@ -36,8 +60,11 @@ export interface CreditCardNumberOptions {
   formatted?: boolean;
 }
 
-export function generateCreditCardNumber({ brand, formatted = false }: CreditCardNumberOptions = {}): string {
-  const spec = BRANDS[brand ?? pick(Object.keys(BRANDS) as CardBrand[])];
+export function generateCreditCardNumber(
+  { brand, formatted = false }: CreditCardNumberOptions = {},
+  runContext?: Record<string, unknown>,
+): string {
+  const spec = BRANDS[currentCardBrand(brand, runContext)];
   const prefix = pick(spec.prefixes);
   const bodyLength = spec.length - prefix.length - 1; // minus the check digit
   const body = randomDigits(bodyLength).join('');
@@ -67,6 +94,6 @@ export interface CreditCardCvcOptions {
 }
 
 /** Amex uses a 4-digit CVC (on the front of the card); every other major brand uses 3. */
-export function generateCreditCardCvc({ brand }: CreditCardCvcOptions = {}): string {
-  return randomDigits(brand === 'amex' ? 4 : 3).join('');
+export function generateCreditCardCvc({ brand }: CreditCardCvcOptions = {}, runContext?: Record<string, unknown>): string {
+  return randomDigits(currentCardBrand(brand, runContext) === 'amex' ? 4 : 3).join('');
 }

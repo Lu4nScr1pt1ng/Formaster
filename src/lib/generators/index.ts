@@ -18,15 +18,19 @@ import { generateCreditCardCvc, generateCreditCardExpiry, generateCreditCardNumb
 import {
   generateAddressCepBr,
   generateAddressCityBr,
+  generateAddressComplementBr,
   generateAddressNeighborhoodBr,
   generateAddressStateBr,
+  generateFullAddressBr,
 } from './address-br';
 import {
   generateAddressCityUs,
+  generateAddressComplementUs,
   generateAddressNeighborhoodUs,
   generateAddressStateUs,
   generateAddressStreetUs,
   generateAddressZipUs,
+  generateFullAddressUs,
 } from './address-us';
 
 export type GeneratorOptions = Record<string, unknown>;
@@ -52,17 +56,19 @@ export const BUILTIN_GENERATORS: Record<BuiltinGeneratorId, GeneratorFn> = {
   passport: () => generatePassport(),
   phoneBr: (options) => generatePhoneBr(options),
   cep: (options, ctx) => (isUsLocale(options) ? generateAddressZipUs(options, ctx) : generateAddressCepBr(options, ctx)),
-  fullName: (options) => generateFullName(options as NameOptions),
-  firstName: (options) => generateFirstName(options as NameOptions),
-  lastName: (options) => generateLastName(options as NameOptions),
-  email: () => generateEmail(),
+  fullName: (options, ctx) => generateFullName(options as NameOptions, ctx),
+  firstName: (options, ctx) => generateFirstName(options as NameOptions, ctx),
+  lastName: (options, ctx) => generateLastName(options as NameOptions, ctx),
+  email: (options, ctx) => generateEmail(options as NameOptions, ctx),
   birthdate: (options) => generateBirthdate(options),
   addressStreet: (options) => (isUsLocale(options) ? generateAddressStreetUs() : generateAddressStreet()),
   addressNumber: () => generateAddressNumber(),
+  addressComplement: (options) => (isUsLocale(options) ? generateAddressComplementUs() : generateAddressComplementBr()),
   addressCity: (options, ctx) => (isUsLocale(options) ? generateAddressCityUs(undefined, ctx) : generateAddressCityBr(undefined, ctx)),
   addressState: (options, ctx) => (isUsLocale(options) ? generateAddressStateUs(undefined, ctx) : generateAddressStateBr(undefined, ctx)),
   addressNeighborhood: (options, ctx) =>
     isUsLocale(options) ? generateAddressNeighborhoodUs(undefined, ctx) : generateAddressNeighborhoodBr(undefined, ctx),
+  fullAddress: (options, ctx) => (isUsLocale(options) ? generateFullAddressUs(undefined, ctx) : generateFullAddressBr(undefined, ctx)),
   company: () => generateCompany(),
   uuid: () => generateUuid(),
   password: (options) => generatePassword(options),
@@ -70,9 +76,9 @@ export const BUILTIN_GENERATORS: Record<BuiltinGeneratorId, GeneratorFn> = {
   decimal: (options) => generateDecimal(options),
   boolean: (options) => generateBoolean(options),
   lorem: (options) => generateLorem(options),
-  creditCardNumber: (options) => generateCreditCardNumber(options),
+  creditCardNumber: (options, ctx) => generateCreditCardNumber(options, ctx),
   creditCardExpiry: (options) => generateCreditCardExpiry(options),
-  creditCardCvc: (options) => generateCreditCardCvc(options),
+  creditCardCvc: (options, ctx) => generateCreditCardCvc(options, ctx),
 };
 
 export function runBuiltinGenerator(id: BuiltinGeneratorId, options?: GeneratorOptions, runContext?: GeneratorRunContext) {
@@ -93,9 +99,11 @@ export const BUILTIN_GENERATOR_LABELS: Record<BuiltinGeneratorId, string> = {
   birthdate: 'Birthdate',
   addressStreet: 'Street',
   addressNumber: 'Address number',
+  addressComplement: 'Address complement',
   addressCity: 'City',
   addressState: 'State',
   addressNeighborhood: 'Neighborhood',
+  fullAddress: 'Full address',
   company: 'Company',
   uuid: 'UUID',
   password: 'Password',

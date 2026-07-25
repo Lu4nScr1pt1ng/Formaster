@@ -60,11 +60,15 @@ field type, wired to a ready-to-run example script, with nothing to set up.
     enabled/disabled or added by hand — useful when a site's id looks
     plausible but is actually regenerated on every load.
   - Generators per field: built-in (CPF, CNPJ, RG, passport, phone, postal
-    code/CEP/ZIP, city/state/neighborhood/street, dates, password, credit
-    card, integer/decimal/boolean/lorem, UUID, …), a fixed value, or custom
+    code/CEP/ZIP, city/state/neighborhood/street/number/complement, a
+    combined full-address line, dates, password, credit card,
+    integer/decimal/boolean/lorem, UUID, …), a fixed value, or custom
     JavaScript with live preview. Most built-ins expose their own options
     right next to the generator picker (mask on/off, min/max, character
-    classes, BR vs US locale, credit card brand, etc.).
+    classes, BR vs US locale, gender, credit card brand, etc.). Name and
+    email generators on the same script share one random identity — first
+    name, last name, and email all agree with each other instead of each
+    picking an unrelated random person.
   - Custom generators can declare their own options schema too, so any field
     using that generator gets matching controls (checkbox/number/select) —
     the same mechanism as the built-ins, just author-defined.
