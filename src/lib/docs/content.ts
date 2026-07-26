@@ -31,6 +31,7 @@ export const DOC_CATEGORIES = [
   'Referencing other fields',
   'JSON reference',
   'Worked example',
+  'Quick actions',
   'Troubleshooting',
 ] as const;
 
@@ -84,7 +85,7 @@ export const DOC_SECTIONS: DocSection[] = [
       p('You can build a script two ways, and freely mix them on the same script:'),
       list([
         '**Visually** — open the field picker on the live page, click the inputs you want, then configure a generator for each one in the script editor. This is the normal path and the rest of this guide assumes it for the mapping steps.',
-        '**As JSON** — the script editor has a live JSON side panel that edits the exact same data, in both directions: change a field in the form and the JSON updates; edit the JSON and the form updates. Import/export also work on this same shape. A handful of things (`radioValue`, `skip` — see [Field step shape](#json-field-step)) currently only have a JSON control, no dedicated UI widget yet.',
+        '**As JSON** — the script editor has a live JSON side panel that edits the exact same data, in both directions: change a field in the form and the JSON updates; edit the JSON and the form updates. Import/export also work on this same shape. A handful of things — a field\'s `radioValue`/`skip` (see [Field step shape](#json-field-step)) and a conditional wait\'s `pollIntervalMs` (see [Conditional wait steps](#wait-step)) — currently only have a JSON control, no dedicated UI widget yet.',
       ]),
       tip(
         'If you want to write a script by hand from scratch (e.g. to generate one programmatically, or restore one from a backup), see [JSON reference](#json-script) for the full annotated shape and a complete example.',
@@ -139,7 +140,7 @@ export const DOC_SECTIONS: DocSection[] = [
       ),
       h3('id-stability-heuristic', 'The id-stability heuristic'),
       p(
-        'An id like `field-x7f3a9c` or React\'s `:r3:` is recognized as auto-generated (it changes every reload) and is **not** offered as a candidate at all — using it would map the field today and silently break it tomorrow. The heuristic: a short alphabetic prefix followed by 6+ hex digits, or React\'s `:r...:` pattern.',
+        'An id like `field-7f3a9c` or React\'s `:r3:` is recognized as auto-generated (it changes every reload) and is **not** offered as a candidate at all — using it would map the field today and silently break it tomorrow. The heuristic: an optional short letters-only prefix, an optional single `-`/`_`/`:` separator, then 6 or more hex digits (`0-9a-f`) with nothing else — so `field-7f3a9c` counts, but `field-x7f3a9c` (the `x` isn\'t a hex digit) or `checkout-form` don\'t.',
       ),
     ],
   },
@@ -179,7 +180,7 @@ export const DOC_SECTIONS: DocSection[] = [
           ['`checkbox`', 'Checked state is set to the value\'s truthiness (only dispatches events if it actually changes).'],
           ['`radio`', 'Finds the radio in the same `name` group whose `value` attribute matches `options.radioValue` (or, if unset, the generated value itself), and checks that one.'],
           ['`select`', 'Sets the matching `<option value>` if one exists; otherwise picks a random enabled, non-empty option — so a fixed/generated value that doesn\'t exist on this particular page never leaves the field unset.'],
-          ['`custom`', 'For anything that isn\'t a native input/select/textarea (a React/Vue-style widget). Simulates a real focus, click, and per-character keydown/input/keyup/change, since these components usually ignore a value set directly.'],
+          ['`custom`', 'For anything that isn\'t a native input/select/textarea (a React/Vue-style widget). Simulates a real focus and click, then per-character keydown/input/keyup, then a final change/blur — since these components usually ignore a value set directly.'],
           ['everything else (`text`, `number`, `email`, `date`, `textarea`, …)', 'Calls the native property setter for `value` (bypassing frameworks that override it) and dispatches `input`/`change` — this is what makes React/Angular-style controlled inputs actually observe the change, the same way a plain assignment would not.'],
         ],
       ),
@@ -211,7 +212,7 @@ export const DOC_SECTIONS: DocSection[] = [
       p(
         'A delay step is a fixed pause: it always waits its full `delayMs` before moving on, no matter what\'s happening on the page. Use it for a plain "give the page a moment" pause where you don\'t have (or don\'t need) something concrete to watch for.',
       ),
-      p('Add one from the script editor\'s "Add wait" menu; drag it anywhere in the step list with the up/down arrows.'),
+      p('Add one from the script editor\'s "Add wait" button; move it anywhere in the step list with the row\'s up/down arrows (there\'s no drag-and-drop, only these).'),
     ],
   },
   {
@@ -232,7 +233,7 @@ export const DOC_SECTIONS: DocSection[] = [
         ],
       ),
       p(
-        'It polls every `pollIntervalMs` (default 150ms) up to `timeoutMs` (default 5000ms). A typical use: a "neighborhood" `<select>` that stays disabled until a postal-code lookup on an earlier field resolves — a wait step with `condition: "enabled"` placed right before that field\'s step lets the fill sequence pause exactly as long as needed instead of guessing a fixed delay.',
+        'It polls every `pollIntervalMs` (default 150ms) up to `timeoutMs` (default 5000ms). Only the condition and the timeout have a UI control — `pollIntervalMs` can only be changed from the JSON panel. A typical use: a "neighborhood" `<select>` that stays disabled until a postal-code lookup on an earlier field resolves — a wait step with `condition: "enabled"` placed right before that field\'s step lets the fill sequence pause exactly as long as needed instead of guessing a fixed delay.',
       ),
     ],
   },
@@ -276,7 +277,7 @@ export const DOC_SECTIONS: DocSection[] = [
           ['`rg`', 'RG', '`masked` (boolean, default `true`). No single national format exists; mimics the common SSP-SP style.'],
           ['`passport`', 'Passport', 'None. Brazilian format: 2 letters + 6 digits.'],
           ['`phoneBr`', 'Phone', '`locale` (`br`/`us`, default `br`), `masked` (boolean, default `true`).'],
-          ['`cep`', 'Postal code', '`locale` (`br`/`us`), `masked` (boolean). Produces a Brazilian CEP or a US ZIP depending on `locale` — the id stayed `cep` for backward compatibility even though it now covers both.'],
+          ['`cep`', 'Postal code', '`locale` (`br`/`us`), `masked` (boolean). Produces a Brazilian CEP or a US ZIP depending on `locale` — the id itself stayed `cep` even though it now covers both.'],
           ['`fullName`', 'Full name', '`locale`, `gender` (`male`/`female`, default random — see [Correlated generators](#shared-identity)).'],
           ['`firstName`', 'First name', 'Same as `fullName`.'],
           ['`lastName`', 'Last name', 'Same as `fullName`.'],
@@ -373,6 +374,9 @@ const n = String(Math.floor(Math.random() * Math.pow(10, digits))).padStart(digi
 return prefix + "_" + n;`,
         'js',
       ),
+      warning(
+        'The `default` in `optionsSchema` only seeds what the **control** shows in the UI — it is **not** automatically filled into `options` at run time. A field whose control was never touched sends `options` without that key at all, so `options.digits` is plain `undefined`, not `4`. Always fall back yourself (`options.digits || 4`, as above) instead of assuming an untouched control means the declared default.',
+      ),
       table(
         ['Type', 'Extra fields', 'Renders as'],
         [
@@ -396,6 +400,9 @@ return prefix + "_" + n;`,
       ),
       p(
         'A broken earlier field (bad selector, throwing generator) doesn\'t block previewing a later one — it\'s just absent from `fields` for that preview, same as it would be absent at real fill time.',
+      ),
+      warning(
+        'One difference from a real run: preview does **not** honor an earlier field\'s `options.skip`. A skipped field never runs (and never populates `fields`) once you actually click **Run** — but while previewing, its value still gets resolved and made available to anything below it. If a generator reads `fields.xyz` and that field is skipped, preview can show a value where a real run would give `undefined`.',
       ),
     ],
   },
@@ -449,7 +456,7 @@ return prefix + "_" + n;`,
         'A field that fails — its selector doesn\'t resolve, or its own generator throws — also doesn\'t populate `fields`. Reading a key that was never set just gives you JavaScript\'s `undefined`, not an error, so guard with something like `fields.company || "N/A"` if an earlier field might legitimately be missing.',
       ]),
       tip(
-        'If a generator needs to read another field, drag that field above it in the step list first — reordering fields is just the up/down arrows on each row, same as reordering delays and waits.',
+        'If a generator needs to read another field, move that field above it in the step list first, using its row\'s up/down arrows (no drag-and-drop) — same as reordering delays and waits.',
       ),
     ],
   },
@@ -478,8 +485,11 @@ return prefix + "_" + n;`,
       p(
         '`urlPatterns` uses the WebExtension match-pattern syntax (`scheme://host/path`, `*` wildcards, `<all_urls>`), plus one Formaster-specific extension: an optional trailing `#fragment`, matched against the URL\'s hash — for targeting one route of a hash-based single-page app (e.g. `*://host/app*#/checkout*`) without matching every other route under the same path.',
       ),
+      tip(
+        'Writing JSON to **import** specifically (not to paste into an already-open script\'s JSON panel)? You can leave `id` out entirely — the import dialog assigns a fresh one automatically if it\'s missing or not a string. Every other field shown above is still required.',
+      ),
       warning(
-        'Every field must have at least one selector, and every selector\'s `value` must be a **non-empty** string. Loading a script with a blank selector value doesn\'t just fail that one field — the whole script fails schema validation and is silently dropped from the list on next load. If you\'re hand-editing JSON, never leave a selector value blank; use an obvious placeholder like `#change-me` instead.',
+        'Every field must have at least one selector, and every selector\'s `value` must be a **non-empty** string. The app enforces this everywhere a script gets written — the form, the JSON panel, and Import all reject a blank selector value with a clear error instead of saving it. That guard exists because storage has no partial-validation: a script that somehow did end up saved with a blank selector would fail schema validation as a **whole** and be silently dropped from the list on next load, not just that one field. So if you\'re constructing JSON outside the app (to import later), never leave a selector value blank — use an obvious placeholder like `#change-me` instead.',
       ),
     ],
   },
@@ -505,10 +515,10 @@ return prefix + "_" + n;`,
   "type": "field",
   "field": {
     "id": "…",
-    "label": "Password",
+    "label": "Plan",
     "selectors": [ /* one or more selector candidates */ ],
-    "elementType": "password",
-    "generator": { "kind": "builtin", "id": "password", "options": { "length": 14 } },
+    "elementType": "radio",
+    "generator": { "kind": "fixed", "value": "pro" },
     "options": { "radioValue": "pro", "skip": false }
   }
 }`,
@@ -627,7 +637,7 @@ return prefix + "_" + n;`,
           'Open the picker on the signup page and click First name, Last name, Email, Password, Confirm password, and a "Referral code" field that starts out disabled.',
           'Set First name → built-in `firstName`, Last name → `lastName`, Email → `email` (these three will share one identity automatically — see [Correlated generators](#shared-identity)).',
           'Set Password → built-in `password` with whatever length/character-class options the target site requires.',
-          'Set Confirm password → **Custom script**, and write `return fields.senha;` (or `fields.password`, matching whatever you labeled the password field — see [How field keys are derived](#fields-key-rule)).',
+          'Set Confirm password → **Custom script**, and write `return fields.password;` (or `fields.senha` if you labeled the field "Senha" instead — see [How field keys are derived](#fields-key-rule)).',
           'The referral code field only enables after email lookup finishes on this particular site — add a **conditional wait** step right before it, targeting the same selector, condition `enabled`, and drop the timeout to whatever\'s reasonable for that lookup.',
           'Set Referral code → **Custom script**: `return "REF-" + String(fields.email).split("@")[0].toUpperCase();`.',
           'Reorder if needed with the up/down arrows — the wait step must sit immediately above the referral code field, and email must be above both the referral code and confirm-password fields for their generators to see it.',
@@ -640,6 +650,39 @@ return prefix + "_" + n;`,
     ],
   },
 
+  // ── Quick actions ─────────────────────────────────────────────────────
+  {
+    id: 'quick-fill-field',
+    title: 'Fill a single field without a script',
+    category: 'Quick actions',
+    blocks: [
+      p(
+        'Right-click any editable field — an `<input>`, `<textarea>`, or `contenteditable` element — and choose **Fill this field** from the browser\'s own context menu. No script, no saving, nothing mapped ahead of time: it runs the exact same auto-detection the picker uses to [suggest a generator](#field-picker) (id, name, placeholder, `aria-label`, label text, `autocomplete`) against just that one element, generates a value with whatever built-in generator it finds, and writes it in immediately.',
+      ),
+      list([
+        'Only **built-in** generators get auto-detected this way — there\'s no menu to pick a specific generator, use a fixed value, or run a custom generator. For anything more than a best guess, map the field into a real script instead.',
+        'Nothing detected? A small badge near the field says "Input type not identified" instead of guessing wrong — better than silently filling in nonsense.',
+        'Each use is independent: unlike a script run, it doesn\'t share a [correlated](#shared-identity) identity/address/card with anything else, even other fields filled this same way moments apart.',
+        'Works on the bundled Playground\'s demo form too, not just real sites — content scripts don\'t normally run on the extension\'s own pages, so the Playground wires this up itself.',
+      ]),
+    ],
+  },
+  {
+    id: 'quick-run-script',
+    title: 'Run a script from the right-click menu',
+    category: 'Quick actions',
+    blocks: [
+      p(
+        'Right-click anywhere on a page (not just a field) and choose **Run script for this page**. It finds the first of your saved scripts whose `urlPatterns` matches the current page and runs it — the exact same `fill/run` mechanism the popup\'s **Run** button uses, just without opening the popup first.',
+      ),
+      list([
+        'No matching script? A "No script for this page" badge shows up instead of doing nothing silently.',
+        'Feedback is the toolbar badge itself: it briefly flashes the number of fields filled, then reverts to the persistent "N scripts match this page" count after a few seconds — there\'s no separate popup or dialog.',
+        'If more than one saved script matches the same page, this runs whichever one comes first in your list — open the popup instead if you need to pick a specific one.',
+      ]),
+    ],
+  },
+
   // ── Troubleshooting ───────────────────────────────────────────────────
   {
     id: 'gotchas',
@@ -647,11 +690,12 @@ return prefix + "_" + n;`,
     category: 'Troubleshooting',
     blocks: [
       list([
-        '**A field vanished, along with the whole script.** Almost always an empty selector value slipped in through the JSON panel or an import file — `formScriptSchema` requires every selector `value` to be non-empty, and a script that fails validation is dropped entirely on next load. See the warning in [Script shape](#json-script).',
+        '**A field vanished, along with the whole script.** This shouldn\'t happen through the app itself — Save, the JSON panel, and Import all reject a blank selector value up front, before anything is written. If it ever does happen, the likely cause is `browser.storage.local` having been edited outside the app: `formScriptSchema` requires every selector `value` to be non-empty, and a script that fails validation is dropped entirely (not just the bad field) on next load. See the warning in [Script shape](#json-script).',
         '**My hand-added selector never gets used.** Candidates are tried in list order and can only be enabled/disabled, never reordered — disable the ones above it. See [Editing selectors by hand](#selector-editing).',
         '**A `<select>` field gets filled with the wrong option.** If the generated/fixed value doesn\'t match any real `<option value>` on the page, Formaster picks a random enabled option instead of leaving it unset — check the actual option values on the page and use a `fixed` generator with one of them, or a `custom` generator that returns one.',
         '**A custom generator can\'t see an earlier field\'s value.** Either the referencing field is above the one it needs (reorder them), or the label-to-key camelCasing doesn\'t match what you typed — check [How field keys are derived](#fields-key-rule), or just read `fields` in the code (`return JSON.stringify(fields);`) and preview it to see the exact keys available.',
         '**`options` is always `{}` in my custom generator.** You need to declare `optionsSchema` for that generator first (see [Generator options](#generator-options)) — without it, there\'s nothing for a field to configure, so `options` stays empty.',
+        '**One specific `options.<key>` is `undefined` even though I gave it a `default`.** The declared `default` only seeds what the field\'s control shows on screen — it\'s never auto-filled into `options` at run time. If that particular control was never touched, the key is simply missing. Always code your own fallback (`options.digits || 4`), never assume an absent key means the declared default.',
         '**A radio field checks the wrong option.** Set `field.options.radioValue` to the exact `value` attribute of the option you want checked — there\'s no UI control for this yet, only the JSON panel. See [Field step shape](#json-field-step).',
       ]),
     ],
@@ -668,7 +712,7 @@ return prefix + "_" + n;`,
         'No access to the page, the DOM, `fetch`/`XMLHttpRequest`, `browser.*` APIs, cookies, or storage of any kind. The only inputs are `helpers`, `options`, and `fields`.',
         'A **3-second** execution timeout — code that runs long (an accidental infinite loop, a huge computation) is forcibly interrupted and the field is reported as an error rather than hanging the fill.',
         'The return value must be a plain `string`, `number`, or `boolean`. Returning an object, array, `undefined`, or a `Promise` throws — generators are synchronous, single-value producers by design.',
-        'No shared state between fields beyond what\'s explicitly passed in: two custom generators can\'t communicate except through `fields` (one reading a value an earlier one already produced).',
+        'No arbitrary shared state between fields: two custom generators can\'t communicate through some variable of their own. The only two channels are `fields` (one reading a value an earlier one already produced) and, indirectly, calling the same correlated `helpers.*` function that other fields also call — e.g. two different custom generators both calling `helpers.email()` still get the same shared identity as each other and as any built-in `email`/`firstName`/… field on the same run (see [Correlated generators](#shared-identity)).',
       ]),
       p(
         'This works identically across every supported browser (Chrome, Brave, Opera, Firefox) with no per-browser special-casing, because WebAssembly compilation is covered by the standard `wasm-unsafe-eval` CSP directive — unlike `eval`, which Chrome always blocks for extensions and modern Firefox blocks outside a sandboxed page it doesn\'t even support.',

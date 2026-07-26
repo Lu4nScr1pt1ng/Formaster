@@ -1,6 +1,29 @@
 import { test, expect } from './fixtures/extension';
 
 /**
+ * Regression coverage for a real bug: saveScript() only broadcast
+ * scripts/refresh when called from background.ts's picker-finish flow — the
+ * Playground's own auto-seed (and every other direct ScriptEditor "Save")
+ * called the same storage function but never told any other already-open
+ * Options tab about it. Reported as: "salvei o exemplo do playground e
+ * quando volto [para a aba de options], não está exibindo novo script".
+ * Fixed by moving the broadcast into saveScript()/deleteScript() themselves
+ * (scripts-store.ts), so it fires regardless of which page called it.
+ */
+test('a script saved from the Playground shows up in an already-open options tab', async ({ openOptions, openPlayground }) => {
+  const options = await openOptions();
+  await expect(options.locator('text=No scripts yet.')).toBeVisible();
+
+  // Opening the Playground auto-seeds its example script via saveScript() —
+  // the exact code path that used to stay silent to other open tabs.
+  const playground = await openPlayground();
+  await expect(playground.locator('input[placeholder="Script name"]')).toHaveValue('Playground example');
+
+  await options.bringToFront();
+  await expect(options.getByRole('button', { name: 'Playground example' })).toBeVisible();
+});
+
+/**
  * Regression coverage for a real bug: picking fields used to write a
  * "draft" to storage and rely on the options page's own onMount to notice
  * it — which only ever happened when a *brand new* options tab was created.

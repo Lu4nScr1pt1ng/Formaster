@@ -198,9 +198,9 @@ export default defineBackground(() => {
     // options tab this opens would notice on its own next mount, which
     // silently did nothing when an options tab was *already* open (focusing
     // an existing tab doesn't remount it, so it never re-read the draft).
-    // Saving for real up front and reusing the same scripts/refresh
-    // broadcast the "existing script" branch above already relies on works
-    // regardless of whether an options tab happens to be open already.
+    // Saving for real up front means the already-open-tab case just works —
+    // saveScript() itself broadcasts scripts/refresh (see scripts-store.ts),
+    // so any open Options tab picks this up regardless of who saved it.
     await saveScript(script);
     await focusOrOpenOptions(script.id);
   }
@@ -212,9 +212,6 @@ export default defineBackground(() => {
     if (openTabs[0]?.id != null) {
       await browser.tabs.update(openTabs[0].id, { active: true });
       if (openTabs[0].windowId != null) await browser.windows.update(openTabs[0].windowId, { focused: true });
-      // The options page is an extension page, not a content script, so it
-      // must be reached with an untargeted runtime broadcast, not tabs.sendMessage.
-      await browser.runtime.sendMessage({ type: 'scripts/refresh', scriptId } satisfies RuntimeMessage);
       return;
     }
 

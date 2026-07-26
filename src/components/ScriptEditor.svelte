@@ -569,7 +569,8 @@
             camelCased — a field labeled "Senha" is <code class="font-mono text-ink-2">fields.senha</code>, "Confirmar
             Senha" is <code class="font-mono text-ink-2">fields.confirmarSenha</code>. <code class="font-mono text-ink-2"
               >options</code
-            > is always an empty object today — there's no way yet to configure a custom generator's own options.
+            > reflects whatever knobs you declare for this generator in its own "Options schema" panel below the code editor
+            — empty by default until you add one.
           </p>
         {:else}
           <div class="space-y-3">
