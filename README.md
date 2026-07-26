@@ -10,6 +10,8 @@ generators.
 Built with [WXT](https://wxt.dev) + Svelte 5 + TypeScript + Zod + Tailwind v4.
 Targets Chrome, Brave, and Opera (Chromium/MV3) and Firefox (MV3).
 
+https://github.com/user-attachments/assets/850c0f46-f308-4def-a1b7-60b5bb4d4300
+
 ## Using it
 
 1. Click the toolbar icon on a page with a form, then **Map fields on this
@@ -81,6 +83,11 @@ field type, wired to a ready-to-run example script, with nothing to set up.
   two non-native "custom" widgets, wired to a ready-to-run example script.
   Lets you test mapping, generators, and conditional waits without needing a
   real site, and tweak/run scripts against a local form.
+- **Right-click menu** — **Fill this field** guesses a generator for
+  whatever input you right-clicked (the same auto-detection the picker
+  uses) and fills it on the spot, no saved script needed. **Run script for
+  this page** runs the first saved script matching the current page
+  without opening the popup first.
 - **Documentation** (opened from the popup or the script library) — a bundled,
   searchable reference covering field mapping and selectors, delay/conditional
   wait steps, every built-in generator and its options, writing custom

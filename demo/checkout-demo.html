@@ -1,0 +1,383 @@
+<!--
+  Recording-only copy of test-fixtures/stripe-style-checkout.html, reskinned
+  to look like a real checkout instead of a labeled test fixture — no
+  "Formaster test fixture" disclaimer, no dev-only hint text, generic brand
+  name. Same markup/ids/behavior otherwise, so it works with Formaster
+  exactly the same way. Not used by the e2e suite — that keeps using the
+  original fixture; this one only exists for demo-script.md's shots.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Checkout</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #30313d;
+    --muted: #6c7688;
+    --border: #e3e8ee;
+    --accent: #635bff;
+    --accent-dark: #524ae0;
+    --bg: #f6f9fc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    padding: 2rem 1rem;
+  }
+  .card {
+    width: 100%;
+    max-width: 440px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.06), 0 12px 28px rgba(0,0,0,.08);
+    padding: 2rem;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: 1.5rem;
+  }
+  .brand .logo {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .brand .name { font-weight: 600; font-size: 15px; }
+  .amount { font-size: 28px; font-weight: 600; margin: 0 0 .25rem; }
+  .desc { color: var(--muted); font-size: 13px; margin: 0 0 1.5rem; }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+    margin: 1rem 0 .375rem;
+  }
+  label:first-of-type { margin-top: 0; }
+
+  input[type="text"], input[type="email"] {
+    width: 100%;
+    padding: .625rem .75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--ink);
+    background: #fff;
+    outline: none;
+  }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,91,255,.15); }
+
+  .row { display: flex; gap: .5rem; }
+  .row > div { flex: 1; min-width: 0; }
+
+  .card-group {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .card-group input {
+    border: none;
+    border-radius: 0;
+  }
+  .card-group .split { display: flex; border-top: 1px solid var(--border); }
+  .card-group .split input { border-right: 1px solid var(--border); }
+  .card-group .split input:last-child { border-right: none; }
+  .card-group input:focus { box-shadow: none; background: #fafbff; }
+
+  /* --- custom country combobox --- */
+  .combobox { position: relative; }
+  .combobox input {
+    cursor: text;
+  }
+  .combobox .flag { position: absolute; left: .6rem; top: 50%; transform: translateY(-50%); font-size: 16px; pointer-events: none; }
+  .combobox input[data-has-flag="true"] { padding-left: 2.1rem; }
+  .listbox {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    padding: .25rem;
+    margin: 0;
+    list-style: none;
+  }
+  .listbox[hidden] { display: none; }
+  .listbox li {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .5rem .6rem;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .listbox li[aria-selected="true"] { background: rgba(99,91,255,.1); font-weight: 600; }
+  .listbox li.active { background: var(--bg); }
+  .listbox li .code { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .listbox .empty { color: var(--muted); padding: .5rem .6rem; cursor: default; }
+
+  button.pay {
+    width: 100%;
+    margin-top: 1.5rem;
+    padding: .75rem 1rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.pay:hover { background: var(--accent-dark); }
+  button.pay:active { transform: translateY(1px); }
+
+  .result {
+    margin-top: 1rem;
+    padding: .75rem;
+    border-radius: 6px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    font-size: 13px;
+    color: #166534;
+    display: none;
+  }
+  .result.show { display: block; }
+</style>
+</head>
+<body>
+  <form class="card" id="checkout-form" autocomplete="off">
+    <div class="brand">
+      <div class="logo">N</div>
+      <div class="name">Nimbus</div>
+    </div>
+    <p class="amount">$49.00</p>
+    <p class="desc">Nimbus Pro — monthly plan</p>
+
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" placeholder="you@example.com" required />
+
+    <label for="cardholder-name">Cardholder name</label>
+    <input type="text" id="cardholder-name" name="cardholderName" placeholder="Full name on card" required />
+
+    <label for="card-number">Card information</label>
+    <div class="card-group">
+      <input type="text" id="card-number" name="cardNumber" placeholder="1234 1234 1234 1234" inputmode="numeric" maxlength="23" required />
+      <div class="split">
+        <input type="text" id="card-expiry" name="cardExpiry" placeholder="MM / YY" inputmode="numeric" maxlength="7" required />
+        <input type="text" id="card-cvc" name="cardCvc" placeholder="CVC" inputmode="numeric" maxlength="4" required />
+      </div>
+    </div>
+
+    <label for="country-search">Country or region</label>
+    <div class="combobox" id="country-combobox">
+      <span class="flag" id="country-flag" hidden></span>
+      <input
+        type="text"
+        id="country-search"
+        role="combobox"
+        aria-expanded="false"
+        aria-controls="country-listbox"
+        aria-autocomplete="list"
+        autocomplete="off"
+        placeholder="Select a country"
+      />
+      <ul class="listbox" id="country-listbox" role="listbox" aria-label="Country" hidden></ul>
+      <input type="hidden" id="country" name="country" value="" />
+    </div>
+
+    <label for="postal-code">ZIP / postal code</label>
+    <input type="text" id="postal-code" name="postalCode" placeholder="94103" required />
+
+    <button type="submit" class="pay">Pay $49.00</button>
+    <div class="result" id="result"></div>
+  </form>
+
+<script>
+(function () {
+  "use strict";
+
+  var COUNTRIES = [
+    ["US","United States","🇺🇸"], ["BR","Brazil","🇧🇷"], ["CA","Canada","🇨🇦"],
+    ["MX","Mexico","🇲🇽"], ["GB","United Kingdom","🇬🇧"], ["IE","Ireland","🇮🇪"],
+    ["FR","France","🇫🇷"], ["DE","Germany","🇩🇪"], ["ES","Spain","🇪🇸"],
+    ["PT","Portugal","🇵🇹"], ["IT","Italy","🇮🇹"], ["NL","Netherlands","🇳🇱"],
+    ["BE","Belgium","🇧🇪"], ["CH","Switzerland","🇨🇭"], ["AT","Austria","🇦🇹"],
+    ["SE","Sweden","🇸🇪"], ["NO","Norway","🇳🇴"], ["DK","Denmark","🇩🇰"],
+    ["FI","Finland","🇫🇮"], ["PL","Poland","🇵🇱"], ["CZ","Czechia","🇨🇿"],
+    ["GR","Greece","🇬🇷"], ["RO","Romania","🇷🇴"], ["HU","Hungary","🇭🇺"],
+    ["UA","Ukraine","🇺🇦"], ["RU","Russia","🇷🇺"], ["TR","Turkey","🇹🇷"],
+    ["IL","Israel","🇮🇱"], ["AE","United Arab Emirates","🇦🇪"], ["SA","Saudi Arabia","🇸🇦"],
+    ["ZA","South Africa","🇿🇦"], ["EG","Egypt","🇪🇬"], ["NG","Nigeria","🇳🇬"],
+    ["KE","Kenya","🇰🇪"], ["IN","India","🇮🇳"], ["PK","Pakistan","🇵🇰"],
+    ["BD","Bangladesh","🇧🇩"], ["CN","China","🇨🇳"], ["JP","Japan","🇯🇵"],
+    ["KR","South Korea","🇰🇷"], ["TW","Taiwan","🇹🇼"], ["HK","Hong Kong","🇭🇰"],
+    ["SG","Singapore","🇸🇬"], ["MY","Malaysia","🇲🇾"], ["TH","Thailand","🇹🇭"],
+    ["VN","Vietnam","🇻🇳"], ["PH","Philippines","🇵🇭"], ["ID","Indonesia","🇮🇩"],
+    ["AU","Australia","🇦🇺"], ["NZ","New Zealand","🇳🇿"], ["AR","Argentina","🇦🇷"],
+    ["CL","Chile","🇨🇱"], ["CO","Colombia","🇨🇴"], ["PE","Peru","🇵🇪"],
+    ["UY","Uruguay","🇺🇾"]
+  ];
+
+  var cardNumber = document.getElementById("card-number");
+  cardNumber.addEventListener("input", function () {
+    var digits = cardNumber.value.replace(/\D/g, "").slice(0, 19);
+    cardNumber.value = digits.replace(/(\d{4})(?=\d)/g, "$1 ");
+  });
+
+  var cardExpiry = document.getElementById("card-expiry");
+  cardExpiry.addEventListener("input", function () {
+    var digits = cardExpiry.value.replace(/\D/g, "").slice(0, 4);
+    cardExpiry.value = digits.length > 2 ? digits.slice(0, 2) + " / " + digits.slice(2) : digits;
+  });
+
+  var cardCvc = document.getElementById("card-cvc");
+  cardCvc.addEventListener("input", function () {
+    cardCvc.value = cardCvc.value.replace(/\D/g, "").slice(0, 4);
+  });
+
+  var input = document.getElementById("country-search");
+  var listbox = document.getElementById("country-listbox");
+  var hiddenValue = document.getElementById("country");
+  var flagEl = document.getElementById("country-flag");
+  var activeIndex = -1;
+  var visible = [];
+
+  function renderOptions(filterText) {
+    var needle = (filterText || "").trim().toLowerCase();
+    visible = COUNTRIES.filter(function (c) {
+      return !needle || c[1].toLowerCase().indexOf(needle) !== -1 || c[0].toLowerCase() === needle;
+    });
+    listbox.innerHTML = "";
+    activeIndex = -1;
+
+    if (visible.length === 0) {
+      var empty = document.createElement("li");
+      empty.className = "empty";
+      empty.textContent = "No matches";
+      listbox.appendChild(empty);
+      return;
+    }
+
+    visible.forEach(function (c, i) {
+      var li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.id = "country-option-" + c[0];
+      li.setAttribute("aria-selected", String(hiddenValue.value === c[0]));
+      li.dataset.code = c[0];
+      li.innerHTML = "<span>" + c[2] + "</span><span>" + c[1] + "</span><span class=\"code\">" + c[0] + "</span>";
+      li.addEventListener("mousedown", function (event) {
+        event.preventDefault();
+        selectCountry(c);
+      });
+      listbox.appendChild(li);
+    });
+  }
+
+  function setActive(index) {
+    var items = listbox.querySelectorAll("li[role=\"option\"]");
+    items.forEach(function (el) { el.classList.remove("active"); });
+    if (index >= 0 && index < items.length) {
+      items[index].classList.add("active");
+      items[index].scrollIntoView({ block: "nearest" });
+      input.setAttribute("aria-activedescendant", items[index].id);
+      activeIndex = index;
+    } else {
+      input.removeAttribute("aria-activedescendant");
+      activeIndex = -1;
+    }
+  }
+
+  function openList() {
+    listbox.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  function closeList() {
+    listbox.hidden = true;
+    input.setAttribute("aria-expanded", "false");
+    setActive(-1);
+  }
+
+  function selectCountry(entry) {
+    hiddenValue.value = entry[0];
+    input.value = entry[1];
+    flagEl.textContent = entry[2];
+    flagEl.hidden = false;
+    input.dataset.hasFlag = "true";
+    hiddenValue.dispatchEvent(new Event("change", { bubbles: true }));
+    closeList();
+  }
+
+  input.addEventListener("focus", function () {
+    renderOptions("");
+    openList();
+  });
+
+  input.addEventListener("input", function () {
+    flagEl.hidden = true;
+    input.dataset.hasFlag = "false";
+    if (hiddenValue.value) {
+      hiddenValue.value = "";
+      hiddenValue.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    renderOptions(input.value);
+    openList();
+  });
+
+  input.addEventListener("keydown", function (event) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (listbox.hidden) { renderOptions(input.value); openList(); }
+      setActive(Math.min(activeIndex + 1, visible.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive(Math.max(activeIndex - 1, 0));
+    } else if (event.key === "Enter") {
+      if (!listbox.hidden && activeIndex >= 0 && visible[activeIndex]) {
+        event.preventDefault();
+        selectCountry(visible[activeIndex]);
+      }
+    } else if (event.key === "Escape") {
+      closeList();
+    }
+  });
+
+  input.addEventListener("blur", function () {
+    setTimeout(closeList, 100);
+  });
+
+  document.addEventListener("click", function (event) {
+    if (!document.getElementById("country-combobox").contains(event.target)) closeList();
+  });
+
+  document.getElementById("checkout-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var result = document.getElementById("result");
+    result.textContent = "Payment confirmed — country=" + (hiddenValue.value || "(none)") +
+      ", card=" + cardNumber.value.replace(/\d(?=\d{4})/g, "•");
+    result.classList.add("show");
+  });
+})();
+</script>
+</body>
+</html>

@@ -19,6 +19,8 @@ test-results
 playwright-report
 blob-report
 
+demo/*.mp4
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
