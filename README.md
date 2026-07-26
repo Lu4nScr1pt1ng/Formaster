@@ -7,10 +7,23 @@ it applies), and save the mapping as a per-site script — editable by hand,
 exportable, importable, and extensible with your own JavaScript data
 generators.
 
-Built with [WXT](https://wxt.dev) + Svelte 5 + TypeScript + Zod + Tailwind v4.
-Targets Chrome, Brave, and Opera (Chromium/MV3) and Firefox (MV3).
-
 https://github.com/user-attachments/assets/850c0f46-f308-4def-a1b7-60b5bb4d4300
+
+## Installation
+
+Download the latest `.zip` for your browser from the
+[Releases page](https://github.com/Lu4nScr1pt1ng/Formaster/releases), unzip
+it, then:
+
+- **Chrome / Brave / Opera**: open `chrome://extensions`, enable "Developer
+  mode", then "Load unpacked" → select the unzipped folder.
+- **Firefox**: open `about:debugging#/runtime/this-firefox`, then "Load
+  Temporary Add-on" → select `manifest.json` inside the unzipped folder.
+  (Temporary add-ons are removed when Firefox closes — reload after
+  restarting.)
+
+Prefer to build it yourself instead — for development, or to inspect
+exactly what runs before loading it? See "Build from source" further down.
 
 ## Using it
 
@@ -110,21 +123,9 @@ The whole UI (popup, options, playground, docs) is responsive down to a
 ~300px-wide viewport — narrow sidebars collapse into drawers, toolbars wrap instead of
 overflowing, and side-by-side panels stack.
 
-## Installation
+## Build from source
 
-**Prebuilt (recommended)** — download the latest `.zip` for your browser from
-the [Releases page](https://github.com/Lu4nScr1pt1ng/Formaster/releases),
-unzip it, then:
-
-- **Chrome / Brave / Opera**: open `chrome://extensions`, enable "Developer
-  mode", then "Load unpacked" → select the unzipped folder.
-- **Firefox**: open `about:debugging#/runtime/this-firefox`, then "Load
-  Temporary Add-on" → select `manifest.json` inside the unzipped folder.
-  (Temporary add-ons are removed when Firefox closes — reload after
-  restarting.)
-
-**Build from source** — for development, or to inspect exactly what runs
-before loading it. See below.
+For development, or to inspect exactly what runs before loading it.
 
 **Requirements:**
 - Any OS (Linux, macOS, or Windows) — nothing platform-specific in the build.
