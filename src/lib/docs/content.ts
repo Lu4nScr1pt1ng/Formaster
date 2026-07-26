@@ -290,6 +290,7 @@ export const DOC_SECTIONS: DocSection[] = [
           ['`addressState`', 'State', '`locale`.'],
           ['`addressNeighborhood`', 'Neighborhood', '`locale`.'],
           ['`fullAddress`', 'Full address', '`locale`. One formatted line combining street, number, complement, neighborhood (BR only), city, state, and postal code.'],
+          ['`country`', 'Country', '`locale` (`br`/`us`/unset, default unset). Unset draws randomly from a broad list of real countries (in English); `br`/`us` pin the result to that one country instead, in the language matching that locale — `br` returns "Brasil", not "Brazil".'],
           ['`company`', 'Company', 'None.'],
           ['`uuid`', 'UUID', 'None. `crypto.randomUUID()`.'],
           ['`password`', 'Password', '`length` (default 12), `uppercase`/`lowercase`/`numbers`/`symbols` (each a boolean, all default `true`) — every enabled class is guaranteed at least one character.'],

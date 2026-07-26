@@ -33,6 +33,24 @@ const GENDER_FIELD: GeneratorOptionField = {
   ],
 };
 
+/**
+ * Distinct from `LOCALE_FIELD` above (which picks *which* BR/US variant a
+ * generator uses, defaulting to `br`): this pins the `country` generator's
+ * own result to one specific country instead of drawing from its full list.
+ * Left as "Any" (the default), it picks randomly — see `country.ts`.
+ */
+const COUNTRY_LOCALE_FIELD: GeneratorOptionField = {
+  key: 'locale',
+  type: 'select',
+  label: 'Country',
+  default: '',
+  choices: [
+    { value: '', label: 'Any' },
+    { value: 'br', label: 'Brazil' },
+    { value: 'us', label: 'United States' },
+  ],
+};
+
 const BRAND_CHOICES = [
   { value: '', label: 'Random brand' },
   { value: 'visa', label: 'Visa' },
@@ -63,6 +81,7 @@ export const BUILTIN_GENERATOR_OPTION_FIELDS: Partial<Record<BuiltinGeneratorId,
   addressState: [LOCALE_FIELD],
   addressNeighborhood: [LOCALE_FIELD],
   fullAddress: [LOCALE_FIELD],
+  country: [COUNTRY_LOCALE_FIELD],
   birthdate: [
     { key: 'minAge', type: 'number', label: 'Min age', default: 18, min: 0, max: 120 },
     { key: 'maxAge', type: 'number', label: 'Max age', default: 65, min: 0, max: 120 },

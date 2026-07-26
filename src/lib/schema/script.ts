@@ -59,6 +59,7 @@ export const builtinGeneratorIdSchema = z.enum([
   'addressState',
   'addressNeighborhood',
   'fullAddress',
+  'country',
   'company',
   'uuid',
   'password',

@@ -60,8 +60,8 @@ field type, wired to a ready-to-run example script, with nothing to set up.
     enabled/disabled or added by hand — useful when a site's id looks
     plausible but is actually regenerated on every load.
   - Generators per field: built-in (CPF, CNPJ, RG, passport, phone, postal
-    code/CEP/ZIP, city/state/neighborhood/street/number/complement, a
-    combined full-address line, dates, password, credit card,
+    code/CEP/ZIP, city/state/neighborhood/street/number/complement, country,
+    a combined full-address line, dates, password, credit card,
     integer/decimal/boolean/lorem, UUID, …), a fixed value, or custom
     JavaScript with live preview. Most built-ins expose their own options
     right next to the generator picker (mask on/off, min/max, character

@@ -34,6 +34,8 @@ const AUTOCOMPLETE_RULES: Record<string, DetectedGenerator> = {
   'address-line1': { id: 'addressStreet' },
   bday: { id: 'birthdate' },
   organization: { id: 'company' },
+  country: { id: 'country' },
+  'country-name': { id: 'country' },
   'cc-number': { id: 'creditCardNumber' },
   'cc-exp': { id: 'creditCardExpiry' },
   'cc-csc': { id: 'creditCardCvc' },
@@ -86,6 +88,13 @@ const KEYWORD_RULES: Array<{ test: (h: string) => boolean; result: DetectedGener
   { test: (h) => has(h, 'street'), result: { id: 'addressStreet', options: { locale: 'us' } } },
   { test: (h) => has(h, 'complemento', 'apto', 'apartamento', 'bloco'), result: { id: 'addressComplement', options: { locale: 'br' } } },
   { test: (h) => has(h, 'complement', 'apt', 'suite', 'unit'), result: { id: 'addressComplement', options: { locale: 'us' } } },
+  // Same EN/PT-picks-the-locale signal as every rule above, but here the
+  // locale option pins the generator to one specific, matching country
+  // name (see country.ts) instead of leaving it to draw randomly from the
+  // full list, which is what happens when a field is assigned this
+  // generator any other way (manually, or with no locale option set).
+  { test: (h) => has(h, 'pais'), result: { id: 'country', options: { locale: 'br' } } },
+  { test: (h) => has(h, 'country', 'nationality'), result: { id: 'country', options: { locale: 'us' } } },
   // "Full address"/"endereço completo" must be checked before the bare
   // "address"/"endereco" rule below, which would otherwise claim it first
   // (a single-line "street address" field is far more common than one

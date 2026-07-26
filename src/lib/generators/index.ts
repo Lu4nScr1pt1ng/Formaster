@@ -14,6 +14,7 @@ import {
 } from './person';
 import { generatePassword } from './password';
 import { generateBoolean, generateDecimal, generateInteger, generateLorem, generateUuid } from './misc';
+import { generateCountry, type CountryOptions } from './country';
 import { generateCreditCardCvc, generateCreditCardExpiry, generateCreditCardNumber } from './credit-card';
 import {
   generateAddressCepBr,
@@ -69,6 +70,7 @@ export const BUILTIN_GENERATORS: Record<BuiltinGeneratorId, GeneratorFn> = {
   addressNeighborhood: (options, ctx) =>
     isUsLocale(options) ? generateAddressNeighborhoodUs(undefined, ctx) : generateAddressNeighborhoodBr(undefined, ctx),
   fullAddress: (options, ctx) => (isUsLocale(options) ? generateFullAddressUs(undefined, ctx) : generateFullAddressBr(undefined, ctx)),
+  country: (options) => generateCountry(options as CountryOptions),
   company: () => generateCompany(),
   uuid: () => generateUuid(),
   password: (options) => generatePassword(options),
@@ -104,6 +106,7 @@ export const BUILTIN_GENERATOR_LABELS: Record<BuiltinGeneratorId, string> = {
   addressState: 'State',
   addressNeighborhood: 'Neighborhood',
   fullAddress: 'Full address',
+  country: 'Country',
   company: 'Company',
   uuid: 'UUID',
   password: 'Password',

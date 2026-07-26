@@ -86,9 +86,18 @@ test('right-click "Fill this field" reports unrecognized fields instead of guess
   const url = staticServer.url('stripe-style-checkout.html');
   await page.goto(url);
 
-  // The type-to-filter box inside the country combobox has no id/name/
-  // autocomplete/label hinting at anything Formaster generates.
-  await page.locator('#country-search').dispatchEvent('contextmenu');
+  // A field injected on the fly, deliberately with no id/name/placeholder/
+  // label/autocomplete — every real field on this fixture now resolves to
+  // something (the country combobox included, since Formaster learned to
+  // detect country/país fields), so this is the one guaranteed-blank target
+  // left for asserting the "nothing matched" fallback.
+  await page.evaluate(() => {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'blank-signal-field';
+    document.body.appendChild(input);
+  });
+  await page.locator('#blank-signal-field').dispatchEvent('contextmenu');
   const serviceWorker = context.serviceWorkers()[0];
   await serviceWorker.evaluate(async (targetUrl) => {
     const [tab] = await chrome.tabs.query({ url: targetUrl });
@@ -100,7 +109,24 @@ test('right-click "Fill this field" reports unrecognized fields instead of guess
     return host?.shadowRoot?.querySelector('.pill')?.textContent ?? null;
   });
   expect(toastText).toBe('Input type not identified');
-  await expect(page.locator('#country-search')).toHaveValue('');
+  await expect(page.locator('#blank-signal-field')).toHaveValue('');
+});
+
+test('right-click "Fill this field" recognizes a country combobox from its label', async ({ context, staticServer }) => {
+  const page = await context.newPage();
+  const url = staticServer.url('stripe-style-checkout.html');
+  await page.goto(url);
+
+  await page.locator('#country-search').dispatchEvent('contextmenu');
+  const serviceWorker = context.serviceWorkers()[0];
+  await serviceWorker.evaluate(async (targetUrl) => {
+    const [tab] = await chrome.tabs.query({ url: targetUrl });
+    await chrome.tabs.sendMessage(tab.id!, { type: 'contextmenu/fill-field' });
+  }, url);
+
+  // The field's own label ("Country or region") is English, so detection
+  // pins the US locale — see detect-generator.ts's EN/PT country rule.
+  await expect(page.locator('#country-search')).toHaveValue('United States');
 });
 
 /**
