@@ -3,7 +3,7 @@
   "description": "Automatic form filling with mocked data, visual field mapping, and programmable per-site scripts",
   "license": "MIT",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.6.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",

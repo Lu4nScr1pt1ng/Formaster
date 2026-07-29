@@ -28,7 +28,7 @@
   let runState = $state<Record<string, RunState>>({});
   let runSummary = $state<Record<string, string>>({});
 
-  const hostname = $derived(safeHostname(currentUrl));
+  const pageLabel = $derived(safePageLabel(currentUrl));
 
   onMount(async () => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -98,9 +98,15 @@
     window.close();
   }
 
-  function safeHostname(url: string): string {
+  // file: URLs have no host component ("file:///path"), so hostname alone
+  // would be blank and wrongly read as "no active tab" — fall back to the
+  // file name in that case.
+  function safePageLabel(url: string): string {
     try {
-      return new URL(url).hostname;
+      const parsed = new URL(url);
+      if (parsed.hostname) return parsed.hostname;
+      if (parsed.protocol === 'file:') return parsed.pathname.split('/').pop() || parsed.pathname;
+      return '';
     } catch {
       return '';
     }
@@ -146,7 +152,7 @@
     <div class="flex min-h-0 flex-1 flex-col">
       <div class="flex shrink-0 items-center gap-1.5 px-4 pb-2 text-[11px] text-ink-3">
         <GlobeIcon size={10} />
-        <span class="truncate">{hostname || 'No active tab'}</span>
+        <span class="truncate">{pageLabel || 'No active tab'}</span>
       </div>
 
       <div class="min-h-0 flex-1 overflow-y-auto px-4">
