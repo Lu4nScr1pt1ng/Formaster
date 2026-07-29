@@ -11,16 +11,12 @@ https://github.com/user-attachments/assets/850c0f46-f308-4def-a1b7-60b5bb4d4300
 
 ## Installation
 
-Download the latest `.zip` for your browser from the
-[Releases page](https://github.com/Lu4nScr1pt1ng/Formaster/releases), unzip
-it, then:
-
-- **Chrome / Brave / Opera**: open `chrome://extensions`, enable "Developer
-  mode", then "Load unpacked" → select the unzipped folder.
-- **Firefox**: open `about:debugging#/runtime/this-firefox`, then "Load
-  Temporary Add-on" → select `manifest.json` inside the unzipped folder.
-  (Temporary add-ons are removed when Firefox closes — reload after
-  restarting.)
+- **Firefox**: install from
+  [Mozilla Add-ons](https://addons.mozilla.org/en-US/firefox/addon/formaster/).
+- **Chrome / Brave / Opera**: download the latest `.zip` from the
+  [Releases page](https://github.com/Lu4nScr1pt1ng/Formaster/releases), unzip
+  it, then open `chrome://extensions`, enable "Developer mode", and "Load
+  unpacked" → select the unzipped folder.
 
 Prefer to build it yourself instead — for development, or to inspect
 exactly what runs before loading it? See "Build from source" further down.
