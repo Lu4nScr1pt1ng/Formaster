@@ -52,12 +52,8 @@ jobs:
         env:
           FIREFOX_ZIP: .output/formaster-${{ env.PKG_VERSION }}-firefox.zip
           FIREFOX_SOURCES_ZIP: .output/formaster-${{ env.PKG_VERSION }}-sources.zip
-          # The AMO numeric addon ID (from addons.mozilla.org/api/v5/addons/search/?q=formaster),
-          # not the gecko id from wxt.config.ts — publish-browser-extension
-          # strips leading/trailing "{"/"}" from FIREFOX_EXTENSION_ID assuming
-          # they're decorative, but this addon's real AMO guid includes the
-          # braces as literal characters, so that stripping looks up the
-          # wrong id and 404s. The numeric id has no braces to mangle.
+          # AMO numeric addon id, not the gecko id from wxt.config.ts (see
+          # commit message for why the gecko id 404s here).
           FIREFOX_EXTENSION_ID: '3043470'
           FIREFOX_JWT_ISSUER: ${{ secrets.FIREFOX_JWT_ISSUER }}
           FIREFOX_JWT_SECRET: ${{ secrets.FIREFOX_JWT_SECRET }}
