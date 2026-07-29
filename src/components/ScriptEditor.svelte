@@ -18,6 +18,7 @@
   import DelayStepRow from './DelayStepRow.svelte';
   import FieldRow from './FieldRow.svelte';
   import WaitForStepRow from './WaitForStepRow.svelte';
+  import { focusWindowIfSupported } from '../lib/focus-window';
   import { fieldContextKey, type FieldValueContext } from '../lib/filler/fill-script';
   import { runBuiltinGenerator, type GeneratorRunContext } from '../lib/generators';
   import { runCustomCode } from '../lib/generators/quickjs-runner';
@@ -313,7 +314,7 @@
       try {
         await browser.tabs.update(returnTabId, { active: true });
         const returnTab = await browser.tabs.get(returnTabId);
-        if (returnTab.windowId != null) await browser.windows.update(returnTab.windowId, { focused: true });
+        await focusWindowIfSupported(returnTab.windowId);
       } catch {
         // The original tab was closed in the meantime — nothing to switch back to.
       }

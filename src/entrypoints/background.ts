@@ -1,3 +1,4 @@
+import { focusWindowIfSupported } from '../lib/focus-window';
 import { runCustomCode } from '../lib/generators/quickjs-runner';
 import type {
   CustomGeneratorRunResult,
@@ -24,34 +25,39 @@ export default defineBackground(() => {
   // items once. `removeAll()` first makes this idempotent regardless
   // (dev-mode extension reloads have been known to trigger it more than
   // once), instead of throwing on a duplicate id.
-  browser.runtime.onInstalled.addListener(async () => {
-    await browser.contextMenus.removeAll();
-    // No "Formaster:" prefix on either title — the browser already groups
-    // an extension's context-menu items under its own name/icon, so
-    // repeating it here would just be noise.
-    browser.contextMenus.create({
-      id: FILL_FIELD_MENU_ID,
-      title: 'Fill this field',
-      contexts: ['editable'],
+  // Firefox for Android has no contextMenus API at all (there's no
+  // right-click to hang it off), so `browser.contextMenus` is undefined
+  // there — skip registration instead of throwing on every install.
+  if (browser.contextMenus) {
+    browser.runtime.onInstalled.addListener(async () => {
+      await browser.contextMenus.removeAll();
+      // No "Formaster:" prefix on either title — the browser already groups
+      // an extension's context-menu items under its own name/icon, so
+      // repeating it here would just be noise.
+      browser.contextMenus.create({
+        id: FILL_FIELD_MENU_ID,
+        title: 'Fill this field',
+        contexts: ['editable'],
+      });
+      browser.contextMenus.create({
+        id: RUN_SCRIPT_MENU_ID,
+        title: 'Run script for this page',
+        // Not scoped to 'editable' like the item above — running a script is a
+        // whole-page action, not tied to whatever specific element was
+        // right-clicked, so it should show up anywhere on the page.
+        contexts: ['all'],
+      });
     });
-    browser.contextMenus.create({
-      id: RUN_SCRIPT_MENU_ID,
-      title: 'Run script for this page',
-      // Not scoped to 'editable' like the item above — running a script is a
-      // whole-page action, not tied to whatever specific element was
-      // right-clicked, so it should show up anywhere on the page.
-      contexts: ['all'],
-    });
-  });
 
-  browser.contextMenus.onClicked.addListener((info, tab) => {
-    if (tab?.id == null) return;
-    if (info.menuItemId === FILL_FIELD_MENU_ID) {
-      void browser.tabs.sendMessage(tab.id, { type: 'contextmenu/fill-field' } satisfies RuntimeMessage);
-    } else if (info.menuItemId === RUN_SCRIPT_MENU_ID) {
-      void handleRunFirstMatchingScript(tab.id, tab.url);
-    }
-  });
+    browser.contextMenus.onClicked.addListener((info, tab) => {
+      if (tab?.id == null) return;
+      if (info.menuItemId === FILL_FIELD_MENU_ID) {
+        void browser.tabs.sendMessage(tab.id, { type: 'contextmenu/fill-field' } satisfies RuntimeMessage);
+      } else if (info.menuItemId === RUN_SCRIPT_MENU_ID) {
+        void handleRunFirstMatchingScript(tab.id, tab.url);
+      }
+    });
+  }
 
   browser.runtime.onMessage.addListener((message: RuntimeMessage, sender) => {
     if (message.type === 'picker/finished') {
@@ -216,15 +222,6 @@ export default defineBackground(() => {
     }
 
     await browser.tabs.create({ url: `${optionsUrl}?script=${scriptId}` });
-  }
-
-  // Firefox for Android has no `windows` API at all — calling it throws and
-  // would otherwise abort the whole flow before the tab it just switched to
-  // ever gets used. Focusing a window is a desktop-only nicety anyway (there's
-  // no multi-window concept to focus on mobile), so skip it there.
-  async function focusWindowIfSupported(windowId: number | undefined): Promise<void> {
-    if (windowId == null || !browser.windows) return;
-    await browser.windows.update(windowId, { focused: true }).catch(() => {});
   }
 
   async function flashResultBadge(tabId: number | undefined, results: FillFieldResult[]): Promise<void> {
