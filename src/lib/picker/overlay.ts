@@ -220,7 +220,11 @@ export class PickerOverlay {
     // (the ✕ button has its own click handler that runs in the bubble phase after this).
     if (this.host && event.composedPath().includes(this.host)) return;
 
-    const target = this.hoveredElement;
+    // Prefer the real click target over the hover-tracked element: touch
+    // taps don't reliably fire a `mousemove` first (Firefox for Android
+    // often skips it), which left `hoveredElement` null and made taps not
+    // register as picks at all.
+    const target = (event.target as Element | null) ?? this.hoveredElement;
     if (!target) return;
     event.preventDefault();
     event.stopPropagation();

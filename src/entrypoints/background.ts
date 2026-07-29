@@ -111,7 +111,7 @@ export default defineBackground(() => {
     if (matchingTab?.id != null) {
       targetTabId = matchingTab.id;
       await browser.tabs.update(targetTabId, { active: true });
-      if (matchingTab.windowId != null) await browser.windows.update(matchingTab.windowId, { focused: true });
+      await focusWindowIfSupported(matchingTab.windowId);
     } else {
       const navigableUrl = urlPatterns.map(patternToNavigableUrl).find((url) => url != null);
       if (!navigableUrl) return; // Pattern too broad to guess a URL; the user needs to open the site manually.
@@ -211,11 +211,20 @@ export default defineBackground(() => {
 
     if (openTabs[0]?.id != null) {
       await browser.tabs.update(openTabs[0].id, { active: true });
-      if (openTabs[0].windowId != null) await browser.windows.update(openTabs[0].windowId, { focused: true });
+      await focusWindowIfSupported(openTabs[0].windowId);
       return;
     }
 
     await browser.tabs.create({ url: `${optionsUrl}?script=${scriptId}` });
+  }
+
+  // Firefox for Android has no `windows` API at all — calling it throws and
+  // would otherwise abort the whole flow before the tab it just switched to
+  // ever gets used. Focusing a window is a desktop-only nicety anyway (there's
+  // no multi-window concept to focus on mobile), so skip it there.
+  async function focusWindowIfSupported(windowId: number | undefined): Promise<void> {
+    if (windowId == null || !browser.windows) return;
+    await browser.windows.update(windowId, { focused: true }).catch(() => {});
   }
 
   async function flashResultBadge(tabId: number | undefined, results: FillFieldResult[]): Promise<void> {
