@@ -34,6 +34,7 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION"
             exit 1
           fi
+          echo "PKG_VERSION=$PKG_VERSION" >> "$GITHUB_ENV"
 
       - run: npm run zip
       - run: npm run zip:firefox
@@ -42,3 +43,16 @@ jobs:
         with:
           files: .output/*.zip
           generate_release_notes: true
+
+      # `zip:firefox` also produces a sources zip (AMO requires the
+      # pre-bundled source since the shipped code is minified by Vite).
+      # Both env var names are read directly by wxt's bundled
+      # `publish-browser-extension` CLI — see its README for the full list.
+      - name: Submit to Firefox Add-ons for review
+        env:
+          FIREFOX_ZIP: .output/formaster-${{ env.PKG_VERSION }}-firefox.zip
+          FIREFOX_SOURCES_ZIP: .output/formaster-${{ env.PKG_VERSION }}-sources.zip
+          FIREFOX_EXTENSION_ID: '{528dc21e-5250-4eb5-9b02-5a63d49e9a1f}'
+          FIREFOX_JWT_ISSUER: ${{ secrets.FIREFOX_JWT_ISSUER }}
+          FIREFOX_JWT_SECRET: ${{ secrets.FIREFOX_JWT_SECRET }}
+        run: npx wxt submit
