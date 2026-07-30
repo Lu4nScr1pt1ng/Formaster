@@ -9,16 +9,17 @@
   import HourglassIcon from 'phosphor-svelte/lib/HourglassIcon';
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
   import SignOutIcon from 'phosphor-svelte/lib/SignOutIcon';
-  import SlidersHorizontalIcon from 'phosphor-svelte/lib/SlidersHorizontalIcon';
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
   import TimerIcon from 'phosphor-svelte/lib/TimerIcon';
   import XIcon from 'phosphor-svelte/lib/XIcon';
   import CodeEditor from './CodeEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import CustomGeneratorCard from './CustomGeneratorCard.svelte';
   import DelayStepRow from './DelayStepRow.svelte';
   import FieldRow from './FieldRow.svelte';
   import WaitForStepRow from './WaitForStepRow.svelte';
   import { createConfirmGate } from '../lib/confirm-gate.svelte';
+  import { createFlashTimer } from '../lib/flash-timer';
   import { focusWindowIfSupported } from '../lib/focus-window';
   import { fieldContextKey, type FieldValueContext } from '../lib/filler/fill-script';
   import { runBuiltinGenerator, type GeneratorRunContext } from '../lib/generators';
@@ -76,13 +77,9 @@
   });
 
   let saveFlash = $state(false);
-  let saveFlashTimer: ReturnType<typeof setTimeout> | undefined;
+  const saveFlashTimer = createFlashTimer(() => (saveFlash = false));
   let justAddedFieldId = $state<string | null>(null);
   const deleteScriptGate = createConfirmGate();
-  const deleteGeneratorGate = createConfirmGate<string>();
-  const confirmDeleteGeneratorName = $derived(
-    draft.customGenerators.find((generator) => generator.id === deleteGeneratorGate.value)?.name ?? '',
-  );
 
   let showJsonView = $state(false);
   let jsonText = $state('');
@@ -137,6 +134,17 @@
     } catch (error) {
       jsonError = error instanceof SyntaxError ? `Invalid JSON: ${error.message}` : formatValidationError(error);
     }
+  }
+
+  // `isJsonEdit` suppresses the resync effect above while the user is
+  // actively typing in the JSON panel (so a debounced re-stringify doesn't
+  // clobber an in-progress, momentarily-invalid edit). It must be cleared
+  // when the panel closes, or the very next visual-editor change (add field,
+  // rename generator, etc.) never resyncs into `jsonText` — reopening the
+  // panel would keep showing whatever was last typed by hand.
+  function toggleJsonView(): void {
+    showJsonView = !showJsonView;
+    if (!showJsonView) isJsonEdit = false;
   }
 
   function makeGenerator(name: string): CustomGenerator {
@@ -295,8 +303,7 @@
       lastSyncedUpdatedAt = saved.updatedAt;
       draft.updatedAt = saved.updatedAt;
       saveFlash = true;
-      clearTimeout(saveFlashTimer);
-      saveFlashTimer = setTimeout(() => (saveFlash = false), 1500);
+      saveFlashTimer.trigger(1500);
       return true;
     } catch {
       // onSave already surfaced a toast explaining what's wrong.
@@ -372,7 +379,7 @@
       <button
         type="button"
         class="flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
-        onclick={() => (showJsonView = !showJsonView)}
+        onclick={toggleJsonView}
       >
         <BracketsCurlyIcon size={14} weight="bold" />
         {showJsonView ? 'Hide code' : 'View code'}
@@ -578,74 +585,14 @@
         {:else}
           <div class="space-y-3">
             {#each draft.customGenerators as generator (generator.id)}
-              <div id={`generator-${generator.id}`} class="rounded-xl bg-surface p-3">
-                <div class="mb-2 flex items-center justify-between gap-2">
-                  <div class="group relative flex min-w-0 flex-1 items-center">
-                    <input
-                      class="min-w-0 flex-1 rounded-t-[5px] border-b border-dashed border-white/15 bg-transparent px-1 py-0.5 text-sm font-medium text-ink-1 outline-none transition hover:border-white/30 hover:bg-surface-hover focus:border-solid focus:border-accent-500 focus:bg-surface-hover"
-                      bind:value={generator.name}
-                    />
-                    <PencilSimpleIcon
-                      size={12}
-                      class="pointer-events-none ml-1.5 shrink-0 text-ink-3 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    class="flex items-center gap-1 rounded-md p-1.5 text-xs text-ink-3 transition hover:bg-red-500/10 hover:text-red-400"
-                    aria-label="Remove generator"
-                    onclick={() => deleteGeneratorGate.request(generator.id)}
-                  >
-                    <TrashIcon size={13} weight="bold" />
-                  </button>
-                </div>
-                <p class="mb-1.5 text-[11px] text-ink-3">
-                  Function body — <code class="font-mono text-ink-2">helpers</code>, <code class="font-mono text-ink-2"
-                    >options</code
-                  >, <code class="font-mono text-ink-2">fields</code> are in scope, <code class="font-mono text-ink-2"
-                    >return</code
-                  > a string/number/boolean. E.g. <code class="font-mono text-ink-2">return helpers.cpf();</code> or
-                  <code class="font-mono text-ink-2">return fields.firstName + "@example.com";</code>
-                  <code class="font-mono text-ink-2">fields</code> keys are each earlier field's <strong
-                    class="text-ink-2">label</strong
-                  > camelCased — "Senha" → <code class="font-mono text-ink-2">fields.senha</code>.
-                </p>
-                <CodeEditor
-                  value={generator.code}
-                  language="javascript"
-                  onChange={(value) => (generator.code = value)}
-                  minHeight="5rem"
-                />
-
-                <button
-                  type="button"
-                  class="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-ink-3 transition hover:text-accent-500"
-                  onclick={() => toggleGeneratorOptions(generator.id)}
-                >
-                  <SlidersHorizontalIcon size={11} weight="bold" />
-                  Options schema
-                  {generator.optionsSchema.length > 0 ? `(${generator.optionsSchema.length})` : ''}
-                </button>
-                {#if expandedGeneratorOptions.has(generator.id)}
-                  <div class="mt-1.5">
-                    <p class="mb-1.5 text-[11px] text-ink-3">
-                      JSON list of knobs this generator exposes on <code class="font-mono text-ink-2">options.*</code> — each
-                      field using it gets a matching control. E.g. <code class="font-mono text-ink-2"
-                        >[&#123;"key":"length","type":"number","label":"Length","default":16&#125;]</code
-                      >.
-                    </p>
-                    <CodeEditor
-                      value={JSON.stringify(generator.optionsSchema, null, 2)}
-                      language="json"
-                      onChange={(value) => setGeneratorOptionsSchemaText(generator, value)}
-                      minHeight="3rem"
-                    />
-                    {#if generatorOptionsError[generator.id]}
-                      <p class="mt-1 text-[11px] text-red-400">{generatorOptionsError[generator.id]}</p>
-                    {/if}
-                  </div>
-                {/if}
-              </div>
+              <CustomGeneratorCard
+                {generator}
+                expanded={expandedGeneratorOptions.has(generator.id)}
+                optionsError={generatorOptionsError[generator.id] ?? null}
+                onToggleOptions={() => toggleGeneratorOptions(generator.id)}
+                onSetOptionsSchemaText={(text) => setGeneratorOptionsSchemaText(generator, text)}
+                onRemove={() => removeCustomGenerator(generator.id)}
+              />
             {/each}
           </div>
         {/if}
@@ -675,12 +622,4 @@
   message={`"${draft.name}" and all its fields and generators will be permanently deleted.`}
   onConfirm={() => deleteScriptGate.confirm(() => onDelete(draft.id))}
   onCancel={deleteScriptGate.cancel}
-/>
-
-<ConfirmDialog
-  open={deleteGeneratorGate.open}
-  title="Delete this generator?"
-  message={`Fields using "${confirmDeleteGeneratorName}" will fall back to an empty fixed value.`}
-  onConfirm={() => deleteGeneratorGate.confirm(removeCustomGenerator)}
-  onCancel={deleteGeneratorGate.cancel}
 />

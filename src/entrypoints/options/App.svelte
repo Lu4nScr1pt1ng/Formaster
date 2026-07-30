@@ -21,7 +21,7 @@
     type FormScript,
   } from '../../lib/schema/script';
   import { setReturnTabId } from '../../lib/storage/return-tab-store';
-  import { deleteScript, exportScript, listScripts, saveScript } from '../../lib/storage/scripts-store';
+  import { deleteScript, downloadScriptAsJson, listScripts, saveScript } from '../../lib/storage/scripts-store';
   import { pushToast } from '../../lib/toast/toast-store.svelte';
 
   let scripts = $state<FormScript[]>([]);
@@ -51,7 +51,27 @@
     );
   }
 
-  onMount(async () => {
+  onMount(() => {
+    // A picker session can also finish while this tab is already open —
+    // background.ts broadcasts this instead of relying on a fresh mount.
+    // Registered synchronously (not inside the async load below) so the
+    // function returned here is recognized by Svelte as a real teardown
+    // callback and the listener actually gets removed on unmount — an
+    // `onMount(async () => ...)` callback returns a Promise instead, which
+    // Svelte can't call as a cleanup function.
+    function handleMessage(message: RuntimeMessage): void {
+      if (message.type === 'scripts/refresh') {
+        void refreshAndSelect(message.scriptId);
+      }
+    }
+    browser.runtime.onMessage.addListener(handleMessage);
+
+    void loadInitialScripts();
+
+    return () => browser.runtime.onMessage.removeListener(handleMessage);
+  });
+
+  async function loadInitialScripts(): Promise<void> {
     scripts = await listScripts();
 
     // Deep link from the popup's "Edit" button, "Create empty script for
@@ -65,15 +85,7 @@
     } else if (scripts.length > 0) {
       selectedId = scripts[0].id;
     }
-
-    // A picker session can also finish while this tab is already open —
-    // background.ts broadcasts this instead of relying on a fresh mount.
-    browser.runtime.onMessage.addListener((message: RuntimeMessage) => {
-      if (message.type === 'scripts/refresh') {
-        void refreshAndSelect(message.scriptId);
-      }
-    });
-  });
+  }
 
   async function refreshAndSelect(scriptId: string): Promise<void> {
     scripts = await listScripts();
@@ -135,14 +147,7 @@
   }
 
   function handleExport(script: FormScript): void {
-    const json = exportScript(script);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${script.name.replace(/[^a-z0-9-]+/gi, '-').toLowerCase() || 'script'}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadScriptAsJson(script);
     pushToast(`"${script.name}" exported`, 'success');
   }
 

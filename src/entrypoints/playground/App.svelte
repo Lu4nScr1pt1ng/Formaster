@@ -16,7 +16,7 @@
   import { buildPlaygroundScript } from '../../lib/playground/seed-script';
   import { duplicateScript, formScriptSchema, formatValidationError, type FormScript } from '../../lib/schema/script';
   import { clearPlaygroundScriptId, getPlaygroundScriptId, setPlaygroundScriptId } from '../../lib/storage/playground-store';
-  import { deleteScript, exportScript, getScript, saveScript } from '../../lib/storage/scripts-store';
+  import { deleteScript, downloadScriptAsJson, getScript, saveScript } from '../../lib/storage/scripts-store';
   import { pushToast } from '../../lib/toast/toast-store.svelte';
 
   // Deliberately scoped to just this one seeded script — not a general
@@ -116,14 +116,7 @@
   }
 
   function handleExport(current: FormScript): void {
-    const json = exportScript(current);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${current.name.replace(/[^a-z0-9-]+/gi, '-').toLowerCase() || 'script'}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadScriptAsJson(current);
     pushToast(`"${current.name}" exported`, 'success');
   }
 

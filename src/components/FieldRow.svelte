@@ -10,6 +10,7 @@
   import SelectorCandidateEditor from './SelectorCandidateEditor.svelte';
   import StepMoveButtons from './StepMoveButtons.svelte';
   import { createConfirmGate } from '../lib/confirm-gate.svelte';
+  import { createFlashTimer } from '../lib/flash-timer';
   import { BUILTIN_GENERATOR_LABELS } from '../lib/generators';
   import { BUILTIN_GENERATOR_OPTION_FIELDS } from '../lib/generators/option-fields';
   import {
@@ -76,7 +77,7 @@
   // svelte-ignore state_referenced_locally
   let expanded = $state(startExpanded);
   const removeGate = createConfirmGate();
-  let previewClearTimer: ReturnType<typeof setTimeout> | undefined;
+  const previewClearFlash = createFlashTimer(() => (previewValue = null));
 
   const builtinOptions = Object.entries(BUILTIN_GENERATOR_LABELS) as [BuiltinGeneratorId, string][];
   const builtinSelectOptions: SearchableSelectOption[] = builtinOptions.map(([id, label]) => ({ value: id, label }));
@@ -147,8 +148,7 @@
       previewError = true;
     } finally {
       previewing = false;
-      clearTimeout(previewClearTimer);
-      previewClearTimer = setTimeout(() => (previewValue = null), 5000);
+      previewClearFlash.trigger(5000);
     }
   }
 </script>

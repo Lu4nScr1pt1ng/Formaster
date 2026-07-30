@@ -46,9 +46,11 @@ test('a saved, page-matching script fills the page when run', async ({ context, 
   // just a hand-built test fixture script.
   const serviceWorker = context.serviceWorkers()[0];
   await serviceWorker.evaluate(async (targetUrl) => {
-    const stored = await chrome.storage.local.get('formaster:scripts');
-    const scripts = stored['formaster:scripts'] as Array<{ urlPatterns: string[] }>;
-    const script = scripts[scripts.length - 1];
+    const stored = await chrome.storage.local.get(null);
+    const scripts = Object.entries(stored)
+      .filter(([key]) => key.startsWith('formaster:script:'))
+      .map(([, value]) => value as { urlPatterns: string[]; updatedAt: string });
+    const script = scripts.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).at(-1);
     const [tab] = await chrome.tabs.query({ url: targetUrl });
     await chrome.tabs.sendMessage(tab.id!, { type: 'fill/run', script });
   }, url);

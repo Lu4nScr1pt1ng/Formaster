@@ -4,7 +4,7 @@
  * their reconciliation. Calling the *native* setter first, then dispatching
  * the events, makes the framework observe the change like a real user typed it.
  */
-function nativeSetter(element: Element, prototype: typeof HTMLInputElement.prototype | typeof HTMLTextAreaElement.prototype) {
+function nativeSetter(prototype: typeof HTMLInputElement.prototype | typeof HTMLTextAreaElement.prototype) {
   return Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
 }
 
@@ -15,7 +15,7 @@ function dispatchInputEvents(element: Element) {
 
 export function setNativeInputValue(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  const setter = nativeSetter(element, prototype);
+  const setter = nativeSetter(prototype);
   if (setter) {
     setter.call(element, value);
   } else {

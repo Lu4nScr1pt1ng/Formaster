@@ -144,9 +144,9 @@ export default defineBackground(() => {
   // Cached in module scope and only reset when a script is actually
   // saved/deleted (via the same `scripts/refresh` broadcast every save/delete
   // already sends, see scripts-store.ts) — without this, every single
-  // tab-complete/tab-activate event across every open tab re-read the whole
-  // `formaster:scripts` blob from storage and re-ran full Zod validation over
-  // it just to count matches for one badge.
+  // tab-complete/tab-activate event across every open tab re-read every
+  // `formaster:script:*` key from storage and re-ran full Zod validation over
+  // all of them just to count matches for one badge.
   let cachedScripts: FormScript[] | null = null;
 
   async function getCachedScripts(): Promise<FormScript[]> {
@@ -199,13 +199,19 @@ export default defineBackground(() => {
   function waitForTabComplete(tabId: number | undefined): Promise<void> {
     if (tabId == null) return Promise.resolve();
     return new Promise((resolve) => {
-      const timeout = setTimeout(resolve, 8000);
+      function finish(): void {
+        clearTimeout(timeout);
+        browser.tabs.onUpdated.removeListener(onUpdated);
+        resolve();
+      }
+      // The listener must be removed on the timeout path too — otherwise a
+      // tab that never reaches 'complete' (a slow site, or a navigation to a
+      // download/PDF URL) leaves `onUpdated` registered on
+      // `browser.tabs.onUpdated` for the rest of the service worker's life,
+      // firing on every tab-update event browser-wide from then on.
+      const timeout = setTimeout(finish, 8000);
       function onUpdated(updatedTabId: number, info: { status?: string }) {
-        if (updatedTabId === tabId && info.status === 'complete') {
-          clearTimeout(timeout);
-          browser.tabs.onUpdated.removeListener(onUpdated);
-          resolve();
-        }
+        if (updatedTabId === tabId && info.status === 'complete') finish();
       }
       browser.tabs.onUpdated.addListener(onUpdated);
     });
@@ -296,12 +302,20 @@ export default defineBackground(() => {
     const filled = results.filter((result) => result.status === 'filled').length;
     await browser.action.setBadgeText({ tabId, text: String(filled) });
     await browser.action.setBadgeBackgroundColor({ tabId, color: RESULT_BADGE_COLOR });
-    setTimeout(async () => {
+    setTimeout(() => {
       // Revert to the persistent "N scripts match this page" badge rather
       // than just blanking it — the fill-result flash is temporary, the
-      // match count underneath it isn't.
-      const tab = await browser.tabs.get(tabId).catch(() => undefined);
-      await updateMatchBadge(tabId, tab?.url);
+      // match count underneath it isn't. Routed through logAsyncError: if the
+      // tab closed during this 3s window, `setBadgeText` on a gone tab
+      // rejects, and a bare setTimeout callback's rejection would otherwise
+      // never be caught by anything.
+      logAsyncError(
+        browser.tabs
+          .get(tabId)
+          .catch(() => undefined)
+          .then((tab) => updateMatchBadge(tabId, tab?.url)),
+        'updateMatchBadge (badge revert)',
+      );
     }, 3000);
   }
 

@@ -161,6 +161,15 @@ export class PickerOverlay {
 
   private repositionMappedBoxes(): void {
     this.mappedElements.forEach(({ box }, element) => {
+      // A SPA re-render can replace a previously-mapped node with a new one
+      // entirely — the old `element` is then detached, so its
+      // `getBoundingClientRect()` collapses to all-zero, which used to park
+      // the box at the top-left corner instead of just hiding it.
+      if (!element.isConnected) {
+        box.style.display = 'none';
+        return;
+      }
+      box.style.display = '';
       const rect = element.getBoundingClientRect();
       box.style.left = `${rect.left}px`;
       box.style.top = `${rect.top}px`;

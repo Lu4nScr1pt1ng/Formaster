@@ -1,49 +1,80 @@
 import { browser } from 'wxt/browser';
 import type { RuntimeMessage } from '../messaging/types';
 import { formScriptSchema, type FormScript } from '../schema/script';
-import { createKeyedStore } from './keyed-store';
 
-const store = createKeyedStore<unknown[]>('formaster:scripts');
+// One `browser.storage.local` key per script (`formaster:script:<id>`)
+// instead of one big array under a single key. Saving/deleting a script used
+// to be a read-the-whole-array, modify, write-the-whole-array-back cycle —
+// with no locking, two different extension contexts (e.g. the background
+// service worker saving a script the picker just finished, and an already-open
+// Options tab saving edits to a *different* script) could both read the same
+// array before either had written back, and whichever write landed second
+// silently discarded the other's change. Giving each script its own key turns
+// a save/delete into a single-key `set`/`remove` — two contexts touching
+// different scripts no longer share any mutable state to race over. (Two
+// contexts saving the *same* script at the same instant still just has the
+// later write win, same as any app without real collaborative merging — that
+// part isn't a bug.)
+const SCRIPT_KEY_PREFIX = 'formaster:script:';
+const LEGACY_ALL_SCRIPTS_KEY = 'formaster:scripts';
 
-async function readAll(): Promise<FormScript[]> {
-  const raw = await store.get();
-  if (!Array.isArray(raw)) return [];
-  return raw.flatMap((entry) => {
-    const parsed = formScriptSchema.safeParse(entry);
-    return parsed.success ? [parsed.data] : [];
-  });
+function scriptKey(id: string): string {
+  return `${SCRIPT_KEY_PREFIX}${id}`;
 }
 
-async function writeAll(scripts: FormScript[]): Promise<void> {
-  await store.set(scripts);
+// Runs at most once per JS context lifetime (background service worker,
+// Options tab, Playground tab each check independently) — cheap to re-check,
+// but pointless to re-check on every single store call once this context has
+// already confirmed there's nothing left to migrate.
+let migrated = false;
+
+async function migrateLegacyScriptsIfNeeded(): Promise<void> {
+  if (migrated) return;
+  migrated = true;
+  const raw = await browser.storage.local.get(LEGACY_ALL_SCRIPTS_KEY);
+  const legacy = raw[LEGACY_ALL_SCRIPTS_KEY];
+  if (legacy === undefined) return; // Already migrated (by this or another context) or a fresh install.
+  if (Array.isArray(legacy)) {
+    const entries: Record<string, unknown> = {};
+    for (const entry of legacy) {
+      const parsed = formScriptSchema.safeParse(entry);
+      if (parsed.success) entries[scriptKey(parsed.data.id)] = parsed.data;
+    }
+    if (Object.keys(entries).length > 0) await browser.storage.local.set(entries);
+  }
+  await browser.storage.local.remove(LEGACY_ALL_SCRIPTS_KEY);
 }
 
 export async function listScripts(): Promise<FormScript[]> {
-  return readAll();
+  await migrateLegacyScriptsIfNeeded();
+  const all = await browser.storage.local.get(null);
+  const scripts: FormScript[] = [];
+  for (const [key, value] of Object.entries(all)) {
+    if (!key.startsWith(SCRIPT_KEY_PREFIX)) continue;
+    const parsed = formScriptSchema.safeParse(value);
+    if (parsed.success) scripts.push(parsed.data);
+  }
+  return scripts;
 }
 
 export async function getScript(id: string): Promise<FormScript | undefined> {
-  const scripts = await readAll();
-  return scripts.find((script) => script.id === id);
+  await migrateLegacyScriptsIfNeeded();
+  const raw = await browser.storage.local.get(scriptKey(id));
+  const parsed = formScriptSchema.safeParse(raw[scriptKey(id)]);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export async function saveScript(script: FormScript): Promise<FormScript> {
-  const scripts = await readAll();
-  const index = scripts.findIndex((existing) => existing.id === script.id);
+  await migrateLegacyScriptsIfNeeded();
   const updated = { ...script, updatedAt: new Date().toISOString() };
-  if (index === -1) {
-    scripts.push(updated);
-  } else {
-    scripts[index] = updated;
-  }
-  await writeAll(scripts);
+  await browser.storage.local.set({ [scriptKey(updated.id)]: updated });
   await broadcastRefresh(updated.id);
   return updated;
 }
 
 export async function deleteScript(id: string): Promise<void> {
-  const scripts = await readAll();
-  await writeAll(scripts.filter((script) => script.id !== id));
+  await migrateLegacyScriptsIfNeeded();
+  await browser.storage.local.remove(scriptKey(id));
   await broadcastRefresh(id);
 }
 
@@ -69,4 +100,16 @@ async function broadcastRefresh(scriptId: string): Promise<void> {
 
 export function exportScript(script: FormScript): string {
   return JSON.stringify(script, null, 2);
+}
+
+/** Triggers a browser download of `script` as a `.json` file — shared by the Options and Playground export buttons. */
+export function downloadScriptAsJson(script: FormScript): void {
+  const json = exportScript(script);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `${script.name.replace(/[^a-z0-9-]+/gi, '-').toLowerCase() || 'script'}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }

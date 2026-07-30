@@ -13,6 +13,7 @@
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon';
   import { browser } from 'wxt/browser';
   import BrandIcon from '../../components/BrandIcon.svelte';
+  import { createKeyedFlashTimer } from '../../lib/flash-timer';
   import type { FillFieldResult, RuntimeMessage } from '../../lib/messaging/types';
   import { createEmptyScript, type FormScript } from '../../lib/schema/script';
   import { setReturnTabId } from '../../lib/storage/return-tab-store';
@@ -29,7 +30,9 @@
   let runSummary = $state<Record<string, string>>({});
   // Tracks the pending "reset to idle" timeout per script, so a second Run
   // click doesn't get its state stomped by the first click's stale timer.
-  const idleTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+  const idleFlash = createKeyedFlashTimer<string>((scriptId) => {
+    runState = { ...runState, [scriptId]: 'idle' };
+  });
 
   const pageLabel = $derived(safePageLabel(currentUrl));
 
@@ -44,8 +47,7 @@
 
   async function runScript(script: FormScript): Promise<void> {
     if (activeTabId == null) return;
-    clearTimeout(idleTimers[script.id]);
-    delete idleTimers[script.id];
+    idleFlash.cancel(script.id);
     runState = { ...runState, [script.id]: 'running' };
     try {
       // `script` is a live $state proxy element (from matchingScripts); the
@@ -65,10 +67,7 @@
       runSummary = { ...runSummary, [script.id]: 'Could not reach this page' };
       runState = { ...runState, [script.id]: 'error' };
     } finally {
-      idleTimers[script.id] = setTimeout(() => {
-        delete idleTimers[script.id];
-        runState = { ...runState, [script.id]: 'idle' };
-      }, 2200);
+      idleFlash.trigger(script.id, 2200);
     }
   }
 
