@@ -4,6 +4,7 @@
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon';
   import CodeEditor from './CodeEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import { useEscapeToClose } from '../lib/dismiss-on-outside.svelte';
   import { formScriptSchema, formatValidationError, type FormScript } from '../lib/schema/script';
 
   interface Props {
@@ -77,22 +78,9 @@
     onCancel();
   }
 
-  // Capture phase, and on window rather than a local element, so Escape
-  // closes the dialog even while focus is inside CodeMirror (which binds
-  // its own keymap and would otherwise swallow the keydown before it bubbles).
   // Skipped while the collision confirm dialog is up so Escape closes that
   // one first instead of also discarding the pasted/loaded text underneath.
-  $effect(() => {
-    if (!open || pendingScript) return;
-    function handleEscape(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        cancel();
-      }
-    }
-    window.addEventListener('keydown', handleEscape, true);
-    return () => window.removeEventListener('keydown', handleEscape, true);
-  });
+  useEscapeToClose(() => open && !pendingScript, cancel);
 </script>
 
 {#if open}

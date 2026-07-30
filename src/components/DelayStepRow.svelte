@@ -3,6 +3,7 @@
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import StepMoveButtons from './StepMoveButtons.svelte';
+  import { createConfirmGate } from '../lib/confirm-gate.svelte';
   import type { DelayStep } from '../lib/schema/script';
 
   interface Props {
@@ -17,15 +18,10 @@
 
   let { step, canMoveUp, canMoveDown, onChange, onRemove, onMoveUp, onMoveDown }: Props = $props();
 
-  let confirmRemoveOpen = $state(false);
+  const removeGate = createConfirmGate();
 
   function setDelay(value: string): void {
     onChange({ ...step, delayMs: Math.max(0, Number(value) || 0) });
-  }
-
-  function confirmRemove(): void {
-    confirmRemoveOpen = false;
-    onRemove();
   }
 </script>
 
@@ -50,17 +46,17 @@
     class="ml-auto rounded-md p-1.5 text-ink-3 hover:bg-red-500/10 hover:text-red-400"
     title="Remove wait"
     aria-label="Remove wait"
-    onclick={() => (confirmRemoveOpen = true)}
+    onclick={() => removeGate.request(true)}
   >
     <TrashIcon size={15} weight="bold" />
   </button>
 </div>
 
 <ConfirmDialog
-  open={confirmRemoveOpen}
+  open={removeGate.open}
   title="Remove this wait?"
   message="This pause will no longer happen between fields."
   confirmLabel="Remove"
-  onConfirm={confirmRemove}
-  onCancel={() => (confirmRemoveOpen = false)}
+  onConfirm={() => removeGate.confirm(onRemove)}
+  onCancel={removeGate.cancel}
 />

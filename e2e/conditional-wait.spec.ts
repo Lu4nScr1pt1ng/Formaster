@@ -32,7 +32,7 @@ test('a waitFor step blocks the dependent field until it unlocks', async ({ cont
         type: 'field',
         field: {
           id: 'f-cep',
-          selectors: [{ strategy: 'id', value: 'cep', enabled: true }],
+          selectors: [{ id: 'sel-cep', strategy: 'id', value: 'cep', enabled: true }],
           elementType: 'text',
           generator: { kind: 'builtin', id: 'cep' },
         },
@@ -40,7 +40,7 @@ test('a waitFor step blocks the dependent field until it unlocks', async ({ cont
       {
         type: 'waitFor',
         id: 'w-neighborhood',
-        selectors: [{ strategy: 'id', value: 'neighborhood', enabled: true }],
+        selectors: [{ id: 'sel-neighborhood-wait', strategy: 'id', value: 'neighborhood', enabled: true }],
         condition: 'enabled',
         timeoutMs: 4000,
         pollIntervalMs: 100,
@@ -49,7 +49,7 @@ test('a waitFor step blocks the dependent field until it unlocks', async ({ cont
         type: 'field',
         field: {
           id: 'f-neighborhood',
-          selectors: [{ strategy: 'id', value: 'neighborhood', enabled: true }],
+          selectors: [{ id: 'sel-neighborhood-field', strategy: 'id', value: 'neighborhood', enabled: true }],
           elementType: 'select',
           generator: { kind: 'builtin', id: 'addressNeighborhood' },
         },
@@ -108,7 +108,7 @@ test('without the waitFor step, the same script racing the lookup can pick the w
         type: 'field',
         field: {
           id: 'f-cep',
-          selectors: [{ strategy: 'id', value: 'cep', enabled: true }],
+          selectors: [{ id: 'sel-cep', strategy: 'id', value: 'cep', enabled: true }],
           elementType: 'text',
           generator: { kind: 'builtin', id: 'cep' },
         },
@@ -117,7 +117,7 @@ test('without the waitFor step, the same script racing the lookup can pick the w
         type: 'field',
         field: {
           id: 'f-neighborhood',
-          selectors: [{ strategy: 'id', value: 'neighborhood', enabled: true }],
+          selectors: [{ id: 'sel-neighborhood-field', strategy: 'id', value: 'neighborhood', enabled: true }],
           elementType: 'select',
           generator: { kind: 'builtin', id: 'addressNeighborhood' },
         },

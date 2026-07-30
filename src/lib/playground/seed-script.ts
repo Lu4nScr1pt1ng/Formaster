@@ -2,7 +2,7 @@ import type { CustomGenerator, FieldMapping, FormScript, ScriptStep, SelectorCan
 
 /** Builds a `{strategy:'id', ...}` selector list for a playground form element by its DOM id. */
 function byId(id: string): SelectorCandidate[] {
-  return [{ strategy: 'id', value: id, enabled: true }];
+  return [{ id: crypto.randomUUID(), strategy: 'id', value: id, enabled: true }];
 }
 
 function field(partial: Omit<FieldMapping, 'id' | 'selectors'> & { id: string }): ScriptStep {

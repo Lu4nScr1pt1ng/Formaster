@@ -35,13 +35,19 @@ export default defineContentScript({
     function finishPicking(): void {
       overlay?.stop();
       overlay = null;
-      if (pickedFields.length === 0 && removedExistingFieldIds.length === 0) return;
+      if (pickedFields.length === 0 && removedExistingFieldIds.length === 0) {
+        // Nothing to save, but the background still needs to hear the
+        // session ended so it can clear a pending "append to this script"
+        // marker instead of leaving it stale for a later session to pick up.
+        browser.runtime.sendMessage({ type: 'picker/cancelled' } satisfies RuntimeMessage).catch(() => {});
+        return;
+      }
       browser.runtime.sendMessage({
         type: 'picker/finished',
         fields: pickedFields,
         removedFieldIds: removedExistingFieldIds,
         pageUrl: location.href,
-      } satisfies RuntimeMessage);
+      } satisfies RuntimeMessage).catch(() => {});
       pickedFields = [];
       removedExistingFieldIds = [];
     }
@@ -69,7 +75,7 @@ export default defineContentScript({
         return response.value;
       });
       // Broadcast for the background's badge flash, independent of the direct reply below.
-      browser.runtime.sendMessage({ type: 'fill/result', results } satisfies RuntimeMessage);
+      browser.runtime.sendMessage({ type: 'fill/result', results } satisfies RuntimeMessage).catch(() => {});
       return results;
     }
 

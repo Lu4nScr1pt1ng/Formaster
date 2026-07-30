@@ -69,7 +69,7 @@ export async function runCustomCode(
     vm.runtime.setMemoryLimit(MEMORY_LIMIT_BYTES);
     vm.runtime.setMaxStackSize(MAX_STACK_SIZE_BYTES);
 
-    setHelpers(vm, runContext);
+    setHelpers(vm, code, runContext);
     setJsonGlobal(vm, 'options', options ?? {});
     setJsonGlobal(vm, 'fields', fields);
 
@@ -94,9 +94,16 @@ export async function runCustomCode(
   }
 }
 
-function setHelpers(vm: QuickJSContext, runContext: GeneratorRunContext): void {
+// Only binds the builtins the generator's own source actually references
+// (a plain substring check — safe to over-match, e.g. a name mentioned only
+// in a comment, but it can never under-match a real `helpers.xyz()` call,
+// since that call has to spell the name out literally). A generator that
+// calls one or two helpers no longer pays for marshaling all ~29 of them
+// into fresh QuickJS function handles on every single invocation.
+function setHelpers(vm: QuickJSContext, code: string, runContext: GeneratorRunContext): void {
   const helpers = vm.newObject();
   for (const [name, fn] of Object.entries(BUILTIN_GENERATORS)) {
+    if (!code.includes(name)) continue;
     const fnHandle = vm.newFunction(name, (optionsHandle?: QuickJSHandle) => {
       const generatorOptions = optionsHandle ? (vm.dump(optionsHandle) as Record<string, unknown>) : undefined;
       const value = fn(generatorOptions, runContext);

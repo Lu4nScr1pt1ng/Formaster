@@ -1,6 +1,7 @@
 <script lang="ts">
   import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon';
   import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon';
+  import { useDismissOnOutside } from '../lib/dismiss-on-outside.svelte';
 
   export interface SearchableSelectOption {
     value: string;
@@ -91,16 +92,7 @@
     }
   }
 
-  $effect(() => {
-    if (!open) return;
-    // mousedown (not click) so this beats an option's own click handler when
-    // the trigger itself is clicked again to toggle closed.
-    function handleOutside(event: MouseEvent): void {
-      if (root && !root.contains(event.target as Node)) closePanel();
-    }
-    window.addEventListener('mousedown', handleOutside, true);
-    return () => window.removeEventListener('mousedown', handleOutside, true);
-  });
+  useDismissOnOutside(() => open, () => root, closePanel);
 </script>
 
 <div class="relative max-w-full {compact ? 'shrink-0' : 'min-w-0'}" bind:this={root}>

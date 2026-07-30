@@ -15,7 +15,7 @@ function buildScript(name: string): FormScript {
         field: {
           id: randomUUID(),
           label: 'Email',
-          selectors: [{ strategy: 'id', value: 'email', enabled: true }],
+          selectors: [{ id: randomUUID(), strategy: 'id', value: 'email', enabled: true }],
           elementType: 'email',
           generator: { kind: 'builtin', id: 'email' },
         },

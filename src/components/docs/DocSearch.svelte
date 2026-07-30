@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon';
   import type { DocSection } from '../../lib/docs/content';
+  import { useDismissOnOutside } from '../../lib/dismiss-on-outside.svelte';
   import { search } from '../../lib/docs/search';
 
   interface Props {
@@ -53,18 +54,12 @@
     inputEl?.focus();
   }
 
-  function handlePointerDown(event: PointerEvent): void {
-    if (rootEl && !rootEl.contains(event.target as Node)) open = false;
-  }
-
   onMount(() => {
     window.addEventListener('keydown', handleGlobalKeydown);
-    window.addEventListener('pointerdown', handlePointerDown);
-    return () => {
-      window.removeEventListener('keydown', handleGlobalKeydown);
-      window.removeEventListener('pointerdown', handlePointerDown);
-    };
+    return () => window.removeEventListener('keydown', handleGlobalKeydown);
   });
+
+  useDismissOnOutside(() => open, () => rootEl, () => (open = false), 'pointerdown');
 </script>
 
 <div class="relative w-full max-w-sm" bind:this={rootEl}>

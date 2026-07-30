@@ -7,6 +7,12 @@ import type { FieldElementType, FormScript, SelectorCandidate } from '../schema/
 export type RuntimeMessage =
   | { type: 'picker/start'; existingFields?: ExistingPickedField[] }
   | { type: 'picker/finished'; fields: PickedField[]; removedFieldIds?: string[]; pageUrl: string }
+  // Sent instead of `picker/finished` when a session ends with nothing picked
+  // or removed (e.g. Escape pressed right away) — still needed so the
+  // background can clear any pending "append to this script" marker (see
+  // storage/pending-picker-store.ts) instead of leaving it to leak into a
+  // later, unrelated session.
+  | { type: 'picker/cancelled' }
   | { type: 'picker/start-for-script'; scriptId: string; urlPatterns: string[] }
   | { type: 'fill/run'; script: FormScript }
   | { type: 'fill/result'; results: FillFieldResult[] }

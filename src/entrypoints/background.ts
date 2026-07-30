@@ -8,7 +8,7 @@ import type {
   RuntimeMessage,
 } from '../lib/messaging/types';
 import { generatorRefFromSuggestion } from '../lib/picker/detect-generator';
-import { clearPendingPickerScriptId, getPendingPickerScriptId, setPendingPickerScriptId } from '../lib/storage/pending-picker-store';
+import { clearPendingPickerSession, getPendingPickerSession, setPendingPickerSession } from '../lib/storage/pending-picker-store';
 import { setReturnTabId } from '../lib/storage/return-tab-store';
 import { getScript, listScripts, saveScript } from '../lib/storage/scripts-store';
 import { createEmptyScript, type FormScript, type ScriptStep } from '../lib/schema/script';
@@ -18,6 +18,16 @@ const MATCH_BADGE_COLOR = '#eea63c';
 const RESULT_BADGE_COLOR = '#10b981';
 const FILL_FIELD_MENU_ID = 'formaster-fill-field';
 const RUN_SCRIPT_MENU_ID = 'formaster-run-script';
+
+// Every genuinely fire-and-forget call below (event handlers can't await a
+// response) used to just get `void`-prefixed, which silences the "unhandled
+// promise" TS/lint warning but not the runtime: a real failure still surfaces
+// only as a generic, contextless "Unhandled promise rejection" in the
+// console. Routing them through here instead means a failure is at least
+// traceable to which handler caused it.
+function logAsyncError(promise: Promise<unknown>, context: string): void {
+  promise.catch((error) => console.error(`formaster: ${context} failed`, error));
+}
 
 export default defineBackground(() => {
   // `onInstalled` only fires on an actual install/update/browser-update, not
@@ -52,20 +62,35 @@ export default defineBackground(() => {
     browser.contextMenus.onClicked.addListener((info, tab) => {
       if (tab?.id == null) return;
       if (info.menuItemId === FILL_FIELD_MENU_ID) {
-        void browser.tabs.sendMessage(tab.id, { type: 'contextmenu/fill-field' } satisfies RuntimeMessage);
+        logAsyncError(
+          browser.tabs.sendMessage(tab.id, { type: 'contextmenu/fill-field' } satisfies RuntimeMessage),
+          'contextmenu/fill-field',
+        );
       } else if (info.menuItemId === RUN_SCRIPT_MENU_ID) {
-        void handleRunFirstMatchingScript(tab.id, tab.url);
+        logAsyncError(handleRunFirstMatchingScript(tab.id, tab.url), 'handleRunFirstMatchingScript');
       }
     });
   }
 
   browser.runtime.onMessage.addListener((message: RuntimeMessage, sender) => {
     if (message.type === 'picker/finished') {
-      void handlePickerFinished(message.pageUrl, message.fields, message.removedFieldIds, sender.tab?.id);
+      logAsyncError(
+        handlePickerFinished(message.pageUrl, message.fields, message.removedFieldIds, sender.tab?.id),
+        'handlePickerFinished',
+      );
+    } else if (message.type === 'picker/cancelled') {
+      // A picker session ended with nothing picked or removed (e.g. Escape
+      // pressed right away) — content.ts sends this instead of staying
+      // silent so a pending "append to script X" marker (see
+      // pending-picker-store.ts) doesn't linger and get picked up by a
+      // later, unrelated picker session in the same tab.
+      logAsyncError(clearPendingSessionForTab(sender.tab?.id), 'clearPendingSessionForTab');
+    } else if (message.type === 'scripts/refresh') {
+      invalidateScriptsCache();
     } else if (message.type === 'picker/start-for-script') {
-      void handleStartForScript(message.scriptId, message.urlPatterns);
+      logAsyncError(handleStartForScript(message.scriptId, message.urlPatterns), 'handleStartForScript');
     } else if (message.type === 'fill/result') {
-      void flashResultBadge(sender.tab?.id, message.results);
+      logAsyncError(flashResultBadge(sender.tab?.id, message.results), 'flashResultBadge');
     } else if (message.type === 'customGenerator/run') {
       // Run in the background instead of the content script: the WASM
       // interpreter's own loading (fetch + WebAssembly.instantiate) has
@@ -92,18 +117,53 @@ export default defineBackground(() => {
   // scripts exist for the page you just landed on, without popping open a
   // window you didn't ask for.
   browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete') void updateMatchBadge(tabId, tab.url);
+    if (changeInfo.status === 'complete') logAsyncError(updateMatchBadge(tabId, tab.url), 'updateMatchBadge');
   });
   browser.tabs.onActivated.addListener(({ tabId }) => {
-    void browser.tabs.get(tabId).then((tab) => updateMatchBadge(tabId, tab.url));
+    logAsyncError(
+      browser.tabs.get(tabId).then((tab) => updateMatchBadge(tabId, tab.url)),
+      'updateMatchBadge (onActivated)',
+    );
   });
+
+  // A picker session's "append to this script" marker is scoped to the tab it
+  // was started on (see pending-picker-store.ts) — if that tab is closed
+  // outright instead of the picker session ending normally, there's no other
+  // signal telling us to clear it, so it would otherwise linger until a
+  // completely unrelated later session on a reused tab id picked it up.
+  browser.tabs.onRemoved.addListener((tabId) => {
+    logAsyncError(clearPendingSessionForTab(tabId), 'clearPendingSessionForTab (onRemoved)');
+  });
+
+  async function clearPendingSessionForTab(tabId: number | undefined): Promise<void> {
+    if (tabId == null) return;
+    const pending = await getPendingPickerSession();
+    if (pending?.tabId === tabId) await clearPendingPickerSession();
+  }
+
+  // Cached in module scope and only reset when a script is actually
+  // saved/deleted (via the same `scripts/refresh` broadcast every save/delete
+  // already sends, see scripts-store.ts) — without this, every single
+  // tab-complete/tab-activate event across every open tab re-read the whole
+  // `formaster:scripts` blob from storage and re-ran full Zod validation over
+  // it just to count matches for one badge.
+  let cachedScripts: FormScript[] | null = null;
+
+  async function getCachedScripts(): Promise<FormScript[]> {
+    cachedScripts ??= await listScripts();
+    return cachedScripts;
+  }
+
+  function invalidateScriptsCache(): void {
+    cachedScripts = null;
+  }
 
   async function updateMatchBadge(tabId: number, url: string | undefined): Promise<void> {
     if (!url) {
       await browser.action.setBadgeText({ tabId, text: '' });
       return;
     }
-    const scripts = await listScripts();
+    const scripts = await getCachedScripts();
     const count = scripts.filter((script) => matchesAnyPattern(url, script.urlPatterns)).length;
     await browser.action.setBadgeText({ tabId, text: count > 0 ? String(count) : '' });
     if (count > 0) await browser.action.setBadgeBackgroundColor({ tabId, color: MATCH_BADGE_COLOR });
@@ -127,7 +187,7 @@ export default defineBackground(() => {
     }
 
     if (targetTabId == null) return;
-    await setPendingPickerScriptId(scriptId);
+    await setPendingPickerSession({ scriptId, tabId: targetTabId });
     const script = await getScript(scriptId);
     const existingFields: ExistingPickedField[] =
       script?.steps
@@ -181,10 +241,16 @@ export default defineBackground(() => {
     // tab this opens/focuses can jump straight back to it.
     if (sourceTabId != null) await setReturnTabId(sourceTabId);
 
-    const pendingScriptId = await getPendingPickerScriptId();
+    // Only trust the pending marker if it was set for *this* tab — a marker
+    // left over from a different, already-abandoned session must never be
+    // applied to an unrelated picker session just because nobody got around
+    // to clearing it yet (see pending-picker-store.ts and the
+    // `picker/cancelled` / `tabs.onRemoved` cleanup above).
+    const pending = await getPendingPickerSession();
+    const pendingScriptId = pending && pending.tabId === sourceTabId ? pending.scriptId : undefined;
     let script: FormScript | undefined;
     if (pendingScriptId) {
-      await clearPendingPickerScriptId();
+      await clearPendingPickerSession();
       script = await getScript(pendingScriptId);
       if (script) {
         const remainingSteps =
@@ -208,6 +274,7 @@ export default defineBackground(() => {
     // saveScript() itself broadcasts scripts/refresh (see scripts-store.ts),
     // so any open Options tab picks this up regardless of who saved it.
     await saveScript(script);
+    invalidateScriptsCache();
     await focusOrOpenOptions(script.id);
   }
 
@@ -241,7 +308,7 @@ export default defineBackground(() => {
   /** The "Run script for this page" context-menu action — same fill/run mechanism the popup's Run button uses. */
   async function handleRunFirstMatchingScript(tabId: number, url: string | undefined): Promise<void> {
     if (!url) return;
-    const scripts = await listScripts();
+    const scripts = await getCachedScripts();
     const script = scripts.find((entry) => matchesAnyPattern(url, entry.urlPatterns));
     if (!script) {
       await browser.tabs.sendMessage(tabId, { type: 'contextmenu/no-script-found' } satisfies RuntimeMessage).catch(() => {});

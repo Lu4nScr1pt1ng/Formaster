@@ -33,12 +33,12 @@
   function addSelector(): void {
     const value = newSelectorValue.trim();
     if (!value) return;
-    onChange([...selectors, { strategy: newSelectorStrategy, value, enabled: true }]);
+    onChange([...selectors, { id: crypto.randomUUID(), strategy: newSelectorStrategy, value, enabled: true }]);
     newSelectorValue = '';
   }
 </script>
 
-{#each selectors as candidate, index}
+{#each selectors as candidate, index (candidate.id)}
   {@const isEnabled = candidate.enabled !== false}
   <div class="flex items-center gap-1.5 font-mono text-[11px]">
     <button

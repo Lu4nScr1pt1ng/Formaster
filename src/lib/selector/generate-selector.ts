@@ -10,12 +10,12 @@ export function generateSelectorCandidates(element: Element): SelectorCandidate[
 
   const id = element.getAttribute('id');
   if (id && isStable(id)) {
-    candidates.push({ strategy: 'id', value: id, enabled: true });
+    candidates.push({ id: crypto.randomUUID(), strategy: 'id', value: id, enabled: true });
   }
 
   const name = element.getAttribute('name');
   if (name) {
-    candidates.push({ strategy: 'name', value: name, enabled: true });
+    candidates.push({ id: crypto.randomUUID(), strategy: 'name', value: name, enabled: true });
   }
 
   const testId =
@@ -23,16 +23,16 @@ export function generateSelectorCandidates(element: Element): SelectorCandidate[
     element.getAttribute('data-test-id') ??
     element.getAttribute('data-test');
   if (testId) {
-    candidates.push({ strategy: 'data-testid', value: testId, enabled: true });
+    candidates.push({ id: crypto.randomUUID(), strategy: 'data-testid', value: testId, enabled: true });
   }
 
   const ariaLabel = element.getAttribute('aria-label');
   if (ariaLabel) {
-    candidates.push({ strategy: 'aria-label', value: ariaLabel, enabled: true });
+    candidates.push({ id: crypto.randomUUID(), strategy: 'aria-label', value: ariaLabel, enabled: true });
   }
 
-  candidates.push({ strategy: 'css', value: buildCssPath(element), enabled: true });
-  candidates.push({ strategy: 'xpath', value: buildXPath(element), enabled: true });
+  candidates.push({ id: crypto.randomUUID(), strategy: 'css', value: buildCssPath(element), enabled: true });
+  candidates.push({ id: crypto.randomUUID(), strategy: 'xpath', value: buildXPath(element), enabled: true });
 
   return candidates;
 }

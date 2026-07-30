@@ -9,6 +9,7 @@
   import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
   import SelectorCandidateEditor from './SelectorCandidateEditor.svelte';
   import StepMoveButtons from './StepMoveButtons.svelte';
+  import { createConfirmGate } from '../lib/confirm-gate.svelte';
   import { BUILTIN_GENERATOR_LABELS } from '../lib/generators';
   import { BUILTIN_GENERATOR_OPTION_FIELDS } from '../lib/generators/option-fields';
   import {
@@ -74,7 +75,8 @@
   // via the "Show selector" button, not by following the prop.
   // svelte-ignore state_referenced_locally
   let expanded = $state(startExpanded);
-  let confirmRemoveOpen = $state(false);
+  const removeGate = createConfirmGate();
+  let previewClearTimer: ReturnType<typeof setTimeout> | undefined;
 
   const builtinOptions = Object.entries(BUILTIN_GENERATOR_LABELS) as [BuiltinGeneratorId, string][];
   const builtinSelectOptions: SearchableSelectOption[] = builtinOptions.map(([id, label]) => ({ value: id, label }));
@@ -135,11 +137,6 @@
     onChange({ ...field, generator: { kind: 'custom', generatorId: value } });
   }
 
-  function confirmRemove(): void {
-    confirmRemoveOpen = false;
-    onRemove();
-  }
-
   async function preview(): Promise<void> {
     previewing = true;
     previewError = false;
@@ -150,7 +147,8 @@
       previewError = true;
     } finally {
       previewing = false;
-      setTimeout(() => (previewValue = null), 5000);
+      clearTimeout(previewClearTimer);
+      previewClearTimer = setTimeout(() => (previewValue = null), 5000);
     }
   }
 </script>
@@ -203,7 +201,7 @@
       class="rounded-md p-1.5 text-ink-3 hover:bg-red-500/10 hover:text-red-400"
       title="Remove field"
       aria-label="Remove field"
-      onclick={() => (confirmRemoveOpen = true)}
+      onclick={() => removeGate.request(true)}
     >
       <TrashIcon size={15} weight="bold" />
     </button>
@@ -304,10 +302,10 @@
 </div>
 
 <ConfirmDialog
-  open={confirmRemoveOpen}
+  open={removeGate.open}
   title="Remove this field?"
   message={`"${field.label || field.elementType}" will no longer be filled by this script.`}
   confirmLabel="Remove"
-  onConfirm={confirmRemove}
-  onCancel={() => (confirmRemoveOpen = false)}
+  onConfirm={() => removeGate.confirm(onRemove)}
+  onCancel={removeGate.cancel}
 />

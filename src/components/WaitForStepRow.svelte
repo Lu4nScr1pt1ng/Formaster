@@ -6,6 +6,7 @@
   import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
   import SelectorCandidateEditor from './SelectorCandidateEditor.svelte';
   import StepMoveButtons from './StepMoveButtons.svelte';
+  import { createConfirmGate } from '../lib/confirm-gate.svelte';
   import { waitConditionSchema, type WaitForStep } from '../lib/schema/script';
 
   const WAIT_CONDITIONS = waitConditionSchema.options;
@@ -34,7 +35,7 @@
   let { step, canMoveUp, canMoveDown, onChange, onRemove, onMoveUp, onMoveDown }: Props = $props();
 
   let expanded = $state(false);
-  let confirmRemoveOpen = $state(false);
+  const removeGate = createConfirmGate();
 
   function setCondition(value: string): void {
     onChange({ ...step, condition: value as WaitForStep['condition'] });
@@ -42,11 +43,6 @@
 
   function setTimeoutMs(value: string): void {
     onChange({ ...step, timeoutMs: Math.max(1, Number(value) || 0) });
-  }
-
-  function confirmRemove(): void {
-    confirmRemoveOpen = false;
-    onRemove();
   }
 </script>
 
@@ -73,7 +69,7 @@
       class="rounded-md p-1.5 text-ink-3 hover:bg-red-500/10 hover:text-red-400"
       title="Remove wait"
       aria-label="Remove wait"
-      onclick={() => (confirmRemoveOpen = true)}
+      onclick={() => removeGate.request(true)}
     >
       <TrashIcon size={15} weight="bold" />
     </button>
@@ -101,10 +97,10 @@
 </div>
 
 <ConfirmDialog
-  open={confirmRemoveOpen}
+  open={removeGate.open}
   title="Remove this wait?"
   message="This condition will no longer block the fields after it."
   confirmLabel="Remove"
-  onConfirm={confirmRemove}
-  onCancel={() => (confirmRemoveOpen = false)}
+  onConfirm={() => removeGate.confirm(onRemove)}
+  onCancel={removeGate.cancel}
 />

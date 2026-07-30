@@ -11,6 +11,12 @@ z.config({ jitless: true });
  * reliability, and the filler tries them in cascade until one resolves.
  */
 export const selectorCandidateSchema = z.object({
+  // Defaulted (not required) so scripts saved before this field existed keep
+  // loading — each candidate missing one gets its own fresh id the first
+  // time it's parsed. Lets the editor key its candidate list stably (by
+  // identity, not by array position or by the value being edited) instead of
+  // reusing/mismatching DOM nodes across add/remove/reorder.
+  id: z.string().min(1).default(() => crypto.randomUUID()),
   strategy: z.enum(['id', 'name', 'data-testid', 'aria-label', 'css', 'xpath']),
   value: z.string().min(1),
   /** Off by default only when the user explicitly disables it (e.g. a dynamically-generated id). */
@@ -233,25 +239,40 @@ export function createEmptyScript(name: string, urlPattern: string): FormScript 
   };
 }
 
+/** Clones a field/waitFor step's selector candidates with fresh ids — never shared by reference or identity with the source script's. */
+function cloneSelectors(selectors: SelectorCandidate[]): SelectorCandidate[] {
+  return selectors.map((selector) => ({ ...selector, id: crypto.randomUUID() }));
+}
+
 /**
  * Deep-clones a script with a fresh id, "(Copy)" name, and fresh ids for
- * every nested field/generator/delay step — including remapping `custom`
- * generator references so they still point at the right (re-id'd) generator.
+ * every nested field/generator/delay step/selector candidate — including
+ * remapping `custom` generator references so they still point at the right
+ * (re-id'd) generator.
  */
 export function duplicateScript(script: FormScript): FormScript {
   const generatorIdMap = new Map(script.customGenerators.map((generator) => [generator.id, crypto.randomUUID()]));
   const customGenerators = script.customGenerators.map((generator) => ({
     ...generator,
     id: generatorIdMap.get(generator.id)!,
+    // Cloned, not shared by reference — otherwise editing the options schema
+    // on the duplicate would silently mutate the original script's generator too.
+    optionsSchema: generator.optionsSchema.map((entry) => ({ ...entry })),
   }));
 
   const steps: ScriptStep[] = script.steps.map((step) => {
-    if (step.type === 'delay' || step.type === 'waitFor') return { ...step, id: crypto.randomUUID() };
+    if (step.type === 'delay') return { ...step, id: crypto.randomUUID() };
+    if (step.type === 'waitFor') {
+      return { ...step, id: crypto.randomUUID(), selectors: cloneSelectors(step.selectors) };
+    }
     const generator: GeneratorRef =
       step.field.generator.kind === 'custom'
         ? { ...step.field.generator, generatorId: generatorIdMap.get(step.field.generator.generatorId) ?? step.field.generator.generatorId }
         : step.field.generator;
-    return { type: 'field', field: { ...step.field, id: crypto.randomUUID(), generator } };
+    return {
+      type: 'field',
+      field: { ...step.field, id: crypto.randomUUID(), generator, selectors: cloneSelectors(step.field.selectors) },
+    };
   });
 
   const now = new Date().toISOString();

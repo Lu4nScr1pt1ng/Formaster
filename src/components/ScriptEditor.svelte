@@ -18,6 +18,7 @@
   import DelayStepRow from './DelayStepRow.svelte';
   import FieldRow from './FieldRow.svelte';
   import WaitForStepRow from './WaitForStepRow.svelte';
+  import { createConfirmGate } from '../lib/confirm-gate.svelte';
   import { focusWindowIfSupported } from '../lib/focus-window';
   import { fieldContextKey, type FieldValueContext } from '../lib/filler/fill-script';
   import { runBuiltinGenerator, type GeneratorRunContext } from '../lib/generators';
@@ -75,11 +76,12 @@
   });
 
   let saveFlash = $state(false);
+  let saveFlashTimer: ReturnType<typeof setTimeout> | undefined;
   let justAddedFieldId = $state<string | null>(null);
-  let confirmDeleteScriptOpen = $state(false);
-  let confirmDeleteGeneratorId = $state<string | null>(null);
+  const deleteScriptGate = createConfirmGate();
+  const deleteGeneratorGate = createConfirmGate<string>();
   const confirmDeleteGeneratorName = $derived(
-    draft.customGenerators.find((generator) => generator.id === confirmDeleteGeneratorId)?.name ?? '',
+    draft.customGenerators.find((generator) => generator.id === deleteGeneratorGate.value)?.name ?? '',
   );
 
   let showJsonView = $state(false);
@@ -217,7 +219,7 @@
     const newStep: ScriptStep = {
       type: 'waitFor',
       id: crypto.randomUUID(),
-      selectors: [{ strategy: 'css', value: '#change-me', enabled: true }],
+      selectors: [{ id: crypto.randomUUID(), strategy: 'css', value: '#change-me', enabled: true }],
       condition: 'enabled',
       timeoutMs: 5000,
       pollIntervalMs: 150,
@@ -234,7 +236,7 @@
       id: crypto.randomUUID(),
       label: '',
       elementType: 'text',
-      selectors: [{ strategy: 'css', value: '#change-me', enabled: true }],
+      selectors: [{ id: crypto.randomUUID(), strategy: 'css', value: '#change-me', enabled: true }],
       generator: { kind: 'fixed', value: '' },
     };
     draft.steps = [...draft.steps, { type: 'field', field: newField }];
@@ -293,7 +295,8 @@
       lastSyncedUpdatedAt = saved.updatedAt;
       draft.updatedAt = saved.updatedAt;
       saveFlash = true;
-      setTimeout(() => (saveFlash = false), 1500);
+      clearTimeout(saveFlashTimer);
+      saveFlashTimer = setTimeout(() => (saveFlash = false), 1500);
       return true;
     } catch {
       // onSave already surfaced a toast explaining what's wrong.
@@ -332,16 +335,6 @@
 
   async function saveAndClose(): Promise<void> {
     if (await save()) await closeEditor();
-  }
-
-  function confirmDeleteScript(): void {
-    confirmDeleteScriptOpen = false;
-    onDelete(draft.id);
-  }
-
-  function confirmDeleteGenerator(): void {
-    if (confirmDeleteGeneratorId) removeCustomGenerator(confirmDeleteGeneratorId);
-    confirmDeleteGeneratorId = null;
   }
 
   async function addFieldsFromPage(): Promise<void> {
@@ -403,7 +396,7 @@
       <button
         type="button"
         class="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-1.5 text-sm text-red-400 transition active:scale-[0.97] hover:bg-red-500/10"
-        onclick={() => (confirmDeleteScriptOpen = true)}
+        onclick={() => deleteScriptGate.request(true)}
       >
         <TrashIcon size={14} weight="bold" />
         Delete
@@ -601,7 +594,7 @@
                     type="button"
                     class="flex items-center gap-1 rounded-md p-1.5 text-xs text-ink-3 transition hover:bg-red-500/10 hover:text-red-400"
                     aria-label="Remove generator"
-                    onclick={() => (confirmDeleteGeneratorId = generator.id)}
+                    onclick={() => deleteGeneratorGate.request(generator.id)}
                   >
                     <TrashIcon size={13} weight="bold" />
                   </button>
@@ -677,17 +670,17 @@
 </div>
 
 <ConfirmDialog
-  open={confirmDeleteScriptOpen}
+  open={deleteScriptGate.open}
   title="Delete this script?"
   message={`"${draft.name}" and all its fields and generators will be permanently deleted.`}
-  onConfirm={confirmDeleteScript}
-  onCancel={() => (confirmDeleteScriptOpen = false)}
+  onConfirm={() => deleteScriptGate.confirm(() => onDelete(draft.id))}
+  onCancel={deleteScriptGate.cancel}
 />
 
 <ConfirmDialog
-  open={confirmDeleteGeneratorId !== null}
+  open={deleteGeneratorGate.open}
   title="Delete this generator?"
   message={`Fields using "${confirmDeleteGeneratorName}" will fall back to an empty fixed value.`}
-  onConfirm={confirmDeleteGenerator}
-  onCancel={() => (confirmDeleteGeneratorId = null)}
+  onConfirm={() => deleteGeneratorGate.confirm(removeCustomGenerator)}
+  onCancel={deleteGeneratorGate.cancel}
 />

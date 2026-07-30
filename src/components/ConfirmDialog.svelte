@@ -1,5 +1,6 @@
 <script lang="ts">
   import WarningIcon from 'phosphor-svelte/lib/WarningIcon';
+  import { useEscapeToClose } from '../lib/dismiss-on-outside.svelte';
 
   interface Props {
     open: boolean;
@@ -15,20 +16,7 @@
   let { open, title, message, confirmLabel = 'Delete', cancelLabel = 'Cancel', danger = true, onConfirm, onCancel }: Props =
     $props();
 
-  // Capture phase, on window, so Escape closes the dialog regardless of
-  // which element currently has focus (a plain keydown on this div only
-  // catches it if focus already happens to be inside the dialog).
-  $effect(() => {
-    if (!open) return;
-    function handleEscape(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onCancel();
-      }
-    }
-    window.addEventListener('keydown', handleEscape, true);
-    return () => window.removeEventListener('keydown', handleEscape, true);
-  });
+  useEscapeToClose(() => open, () => onCancel());
 </script>
 
 {#if open}
