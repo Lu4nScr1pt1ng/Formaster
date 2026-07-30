@@ -71,8 +71,26 @@
     return () => browser.runtime.onMessage.removeListener(handleMessage);
   });
 
+  // The "Formaster" sidebar header renders unconditionally, before this
+  // page's own storage read finishes — nothing here blocks the user from
+  // clicking "New"/"Import"/"Duplicate" (all synchronous, local-only until
+  // saved) while a `listScripts()` call from `loadInitialScripts` or
+  // `refreshAndSelect` is still in flight. Blindly assigning `scripts =
+  // await listScripts()` after that await would then wipe out whatever
+  // unsaved draft the user just created, since storage has never heard of
+  // it — this merges storage's view back in without discarding anything
+  // local-only. Storage still wins for any id it does know about (edits,
+  // deletes), a draft only survives until it's actually saved (at which
+  // point it shows up in `stored` under its own id and this becomes a no-op
+  // for it).
+  function mergeWithLocalDrafts(stored: FormScript[]): FormScript[] {
+    const draftsOnly = scripts.filter((script) => !stored.some((existing) => existing.id === script.id));
+    return [...stored, ...draftsOnly];
+  }
+
   async function loadInitialScripts(): Promise<void> {
-    scripts = await listScripts();
+    const stored = await listScripts();
+    scripts = mergeWithLocalDrafts(stored);
 
     // Deep link from the popup's "Edit" button, "Create empty script for
     // this page", or a picker session finishing while no options tab was
@@ -82,13 +100,16 @@
     const requestedId = new URLSearchParams(location.search).get('script');
     if (requestedId && scripts.some((script) => script.id === requestedId)) {
       selectedId = requestedId;
-    } else if (scripts.length > 0) {
+    } else if (selectedId === null && scripts.length > 0) {
+      // Only a *default* preselect for whenever nothing's selected yet — must
+      // not stomp a selection the user already made (e.g. clicking "New")
+      // while this load was still in flight.
       selectedId = scripts[0].id;
     }
   }
 
   async function refreshAndSelect(scriptId: string): Promise<void> {
-    scripts = await listScripts();
+    scripts = mergeWithLocalDrafts(await listScripts());
     if (scripts.some((script) => script.id === scriptId)) {
       selectedId = scriptId;
     }
@@ -132,7 +153,7 @@
       throw new Error(message);
     }
     const saved = await saveScript(validation.data);
-    scripts = await listScripts();
+    scripts = mergeWithLocalDrafts(await listScripts());
     selectedId = saved.id;
     pushToast(`"${saved.name}" saved`, 'success');
     return saved;
@@ -141,7 +162,7 @@
   async function handleDelete(id: string): Promise<void> {
     const name = scripts.find((script) => script.id === id)?.name ?? 'Script';
     await deleteScript(id);
-    scripts = await listScripts();
+    scripts = mergeWithLocalDrafts(await listScripts()).filter((script) => script.id !== id);
     selectedId = scripts[0]?.id ?? null;
     pushToast(`"${name}" deleted`, 'info');
   }
@@ -153,7 +174,7 @@
 
   async function handleImportScript(script: FormScript): Promise<void> {
     const saved = await saveScript(script);
-    scripts = await listScripts();
+    scripts = mergeWithLocalDrafts(await listScripts());
     selectedId = saved.id;
     importDialogOpen = false;
     pushToast(`"${saved.name}" imported`, 'success');

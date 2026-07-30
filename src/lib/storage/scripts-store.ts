@@ -34,8 +34,12 @@ async function migrateLegacyScriptsIfNeeded(): Promise<void> {
   const raw = await browser.storage.local.get(LEGACY_ALL_SCRIPTS_KEY);
   const legacy = raw[LEGACY_ALL_SCRIPTS_KEY];
   if (legacy === undefined) return; // Already migrated (by this or another context) or a fresh install.
+  await migrateLegacyEntries(legacy);
+}
+
+async function migrateLegacyEntries(legacy: unknown): Promise<Record<string, unknown>> {
+  const entries: Record<string, unknown> = {};
   if (Array.isArray(legacy)) {
-    const entries: Record<string, unknown> = {};
     for (const entry of legacy) {
       const parsed = formScriptSchema.safeParse(entry);
       if (parsed.success) entries[scriptKey(parsed.data.id)] = parsed.data;
@@ -43,11 +47,27 @@ async function migrateLegacyScriptsIfNeeded(): Promise<void> {
     if (Object.keys(entries).length > 0) await browser.storage.local.set(entries);
   }
   await browser.storage.local.remove(LEGACY_ALL_SCRIPTS_KEY);
+  return entries;
+}
+
+// `listScripts()` runs on every Options/Playground mount, right as the user
+// can already interact with the page — every extra `storage.local` round
+// trip here directly widens a real race window elsewhere (see
+// options/App.svelte's `mergeWithLocalDrafts`), so this folds the
+// legacy-migration check into the same `get(null)` call instead of a
+// separate one beforehand.
+async function readAllScriptEntries(): Promise<Record<string, unknown>> {
+  const all = await browser.storage.local.get(null);
+  if (migrated) return all;
+  migrated = true;
+  if (!(LEGACY_ALL_SCRIPTS_KEY in all)) return all;
+  const migratedEntries = await migrateLegacyEntries(all[LEGACY_ALL_SCRIPTS_KEY]);
+  delete all[LEGACY_ALL_SCRIPTS_KEY];
+  return { ...all, ...migratedEntries };
 }
 
 export async function listScripts(): Promise<FormScript[]> {
-  await migrateLegacyScriptsIfNeeded();
-  const all = await browser.storage.local.get(null);
+  const all = await readAllScriptEntries();
   const scripts: FormScript[] = [];
   for (const [key, value] of Object.entries(all)) {
     if (!key.startsWith(SCRIPT_KEY_PREFIX)) continue;
