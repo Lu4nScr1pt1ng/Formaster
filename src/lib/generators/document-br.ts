@@ -1,4 +1,4 @@
-import { randomDigits } from './random';
+import { randomDigits, randomInt } from './random';
 
 function cpfCheckDigit(digits: number[]): number {
   let sum = 0;
@@ -74,11 +74,7 @@ export function generateRg({ masked = true }: DocumentOptions = {}): string {
 
 /** Brazilian passport format: 2 letters + 6 digits. */
 export function generatePassport(): string {
-  const letters = Array.from({ length: 2 }, () => String.fromCharCode(randomIntUpper()));
+  const letters = String.fromCharCode(randomInt(65, 90)) + String.fromCharCode(randomInt(65, 90));
   const digits = randomDigits(6).join('');
-  return `${letters.join('')}${digits}`;
-}
-
-function randomIntUpper(): number {
-  return Math.floor(Math.random() * 26) + 65; // 'A'-'Z'
+  return `${letters}${digits}`;
 }

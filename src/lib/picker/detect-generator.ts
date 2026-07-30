@@ -12,9 +12,20 @@ function normalize(value: string | null | undefined): string {
     .replace(/[̀-ͯ]/g, ''); // strip accents so "endereço"/"nascimento" match ascii keywords too
 }
 
+const wordBoundaryRegexes = new Map<string, RegExp>();
+
+function wordBoundaryRegex(word: string): RegExp {
+  let regex = wordBoundaryRegexes.get(word);
+  if (!regex) {
+    regex = new RegExp(`\\b${word}\\b`);
+    wordBoundaryRegexes.set(word, regex);
+  }
+  return regex;
+}
+
 /** Whole-word match — "rg" shouldn't fire on "org" or "large". */
 function has(haystack: string, ...words: string[]): boolean {
-  return words.some((word) => new RegExp(`\\b${word}\\b`).test(haystack));
+  return words.some((word) => wordBoundaryRegex(word).test(haystack));
 }
 
 // autocomplete is a standardized HTML attribute that says exactly what a

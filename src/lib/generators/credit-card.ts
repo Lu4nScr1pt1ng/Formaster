@@ -1,4 +1,4 @@
-import { pick, randomDigits, randomInt } from './random';
+import { getOrCreate, pick, randomDigits, randomInt } from './random';
 
 export type CardBrand = 'visa' | 'mastercard' | 'amex' | 'discover';
 
@@ -30,12 +30,8 @@ const RUN_CONTEXT_KEY = 'cardBrand';
  * always wins and re-pins the cache for whatever comes after it.
  */
 function currentCardBrand(brand: CardBrand | undefined, runContext?: Record<string, unknown>): CardBrand {
-  if (!runContext) return brand ?? pick(CARD_BRANDS);
-  const cached = runContext[RUN_CONTEXT_KEY];
-  if (!brand && isCardBrand(cached)) return cached;
-  const resolved = brand ?? pick(CARD_BRANDS);
-  runContext[RUN_CONTEXT_KEY] = resolved;
-  return resolved;
+  const isValid = (cached: unknown): cached is CardBrand => !brand && isCardBrand(cached);
+  return getOrCreate(runContext, RUN_CONTEXT_KEY, isValid, () => brand ?? pick(CARD_BRANDS));
 }
 
 /** Standard Luhn check-digit generation for a partial number (all digits except the last). */
@@ -67,8 +63,7 @@ export function generateCreditCardNumber(
   const spec = BRANDS[currentCardBrand(brand, runContext)];
   const prefix = pick(spec.prefixes);
   const bodyLength = spec.length - prefix.length - 1; // minus the check digit
-  const body = randomDigits(bodyLength).join('');
-  const partial = `${prefix}${body}`.split('').map(Number);
+  const partial = [...prefix].map(Number).concat(randomDigits(bodyLength));
   const digits = partial.join('') + luhnCheckDigit(partial);
   return formatted ? digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : digits;
 }

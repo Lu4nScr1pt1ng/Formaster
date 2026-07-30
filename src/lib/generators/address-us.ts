@@ -1,4 +1,4 @@
-import { pick, randomDigits, randomInt } from './random';
+import { getOrCreate, pick, randomDigits, randomInt } from './random';
 import { generateAddressNumber } from './person';
 
 /**
@@ -67,18 +67,13 @@ function pickAddressUsRecord(): AddressUsRecord {
 
 const RUN_CONTEXT_KEY = 'addressUs';
 
-/** Same run-scoped caching as `address-br.ts`'s BR quartet — see that file for why. */
-function currentAddressUsRecord(runContext?: Record<string, unknown>): AddressUsRecord {
-  if (!runContext) return pickAddressUsRecord();
-  const cached = runContext[RUN_CONTEXT_KEY];
-  if (isAddressUsRecord(cached)) return cached;
-  const record = pickAddressUsRecord();
-  runContext[RUN_CONTEXT_KEY] = record;
-  return record;
-}
-
 function isAddressUsRecord(value: unknown): value is AddressUsRecord {
   return typeof value === 'object' && value !== null && 'zip' in value && 'city' in value;
+}
+
+/** Same run-scoped caching as `address-br.ts`'s BR quartet — see that file for why. */
+function currentAddressUsRecord(runContext?: Record<string, unknown>): AddressUsRecord {
+  return getOrCreate(runContext, RUN_CONTEXT_KEY, isAddressUsRecord, pickAddressUsRecord);
 }
 
 export interface AddressZipOptions {

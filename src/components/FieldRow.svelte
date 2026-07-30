@@ -1,17 +1,14 @@
 <script lang="ts">
-  import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon';
-  import CaretUpIcon from 'phosphor-svelte/lib/CaretUpIcon';
-  import CheckSquareIcon from 'phosphor-svelte/lib/CheckSquareIcon';
   import CodeIcon from 'phosphor-svelte/lib/CodeIcon';
   import CopySimpleIcon from 'phosphor-svelte/lib/CopySimpleIcon';
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon';
   import PlayIcon from 'phosphor-svelte/lib/PlayIcon';
-  import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
-  import SquareIcon from 'phosphor-svelte/lib/SquareIcon';
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import GeneratorOptionsEditor from './GeneratorOptionsEditor.svelte';
   import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
+  import SelectorCandidateEditor from './SelectorCandidateEditor.svelte';
+  import StepMoveButtons from './StepMoveButtons.svelte';
   import { BUILTIN_GENERATOR_LABELS } from '../lib/generators';
   import { BUILTIN_GENERATOR_OPTION_FIELDS } from '../lib/generators/option-fields';
   import {
@@ -21,21 +18,7 @@
     type FieldElementType,
     type FieldMapping,
     type GeneratorRef,
-    type SelectorCandidate,
   } from '../lib/schema/script';
-
-  const SELECTOR_STRATEGIES: SelectorCandidate['strategy'][] = [
-    'id',
-    'name',
-    'data-testid',
-    'aria-label',
-    'css',
-    'xpath',
-  ];
-  const SELECTOR_STRATEGY_OPTIONS: SearchableSelectOption[] = SELECTOR_STRATEGIES.map((strategy) => ({
-    value: strategy,
-    label: strategy,
-  }));
 
   const FIELD_ELEMENT_TYPES = fieldElementTypeSchema.options;
   const FIELD_ELEMENT_TYPE_OPTIONS: SearchableSelectOption[] = FIELD_ELEMENT_TYPES.map((type) => ({
@@ -92,8 +75,6 @@
   // svelte-ignore state_referenced_locally
   let expanded = $state(startExpanded);
   let confirmRemoveOpen = $state(false);
-  let newSelectorStrategy = $state<SelectorCandidate['strategy']>('css');
-  let newSelectorValue = $state('');
 
   const builtinOptions = Object.entries(BUILTIN_GENERATOR_LABELS) as [BuiltinGeneratorId, string][];
   const builtinSelectOptions: SearchableSelectOption[] = builtinOptions.map(([id, label]) => ({ value: id, label }));
@@ -159,33 +140,6 @@
     onRemove();
   }
 
-  function toggleSelectorEnabled(index: number): void {
-    const selectors = field.selectors.map((candidate, i) =>
-      i === index ? { ...candidate, enabled: candidate.enabled === false } : candidate,
-    );
-    onChange({ ...field, selectors });
-  }
-
-  function updateSelectorValue(index: number, value: string): void {
-    const selectors = field.selectors.map((candidate, i) => (i === index ? { ...candidate, value } : candidate));
-    onChange({ ...field, selectors });
-  }
-
-  function removeSelector(index: number): void {
-    if (field.selectors.length <= 1) return; // at least one candidate must remain
-    onChange({ ...field, selectors: field.selectors.filter((_, i) => i !== index) });
-  }
-
-  function addSelector(): void {
-    const value = newSelectorValue.trim();
-    if (!value) return;
-    onChange({
-      ...field,
-      selectors: [...field.selectors, { strategy: newSelectorStrategy, value, enabled: true }],
-    });
-    newSelectorValue = '';
-  }
-
   async function preview(): Promise<void> {
     previewing = true;
     previewError = false;
@@ -203,28 +157,7 @@
 
 <div id={`field-${field.id}`} class="rounded-xl bg-surface p-3">
   <div class="flex flex-wrap items-center gap-y-1.5 gap-x-2">
-    <div class="flex shrink-0 flex-col">
-      <button
-        type="button"
-        class="rounded p-0.5 text-ink-3 hover:bg-surface-hover hover:text-ink-1 disabled:pointer-events-none disabled:opacity-25"
-        title="Move up"
-        aria-label="Move up"
-        disabled={!canMoveUp}
-        onclick={onMoveUp}
-      >
-        <CaretUpIcon size={11} weight="bold" />
-      </button>
-      <button
-        type="button"
-        class="rounded p-0.5 text-ink-3 hover:bg-surface-hover hover:text-ink-1 disabled:pointer-events-none disabled:opacity-25"
-        title="Move down"
-        aria-label="Move down"
-        disabled={!canMoveDown}
-        onclick={onMoveDown}
-      >
-        <CaretDownIcon size={11} weight="bold" />
-      </button>
-    </div>
+    <StepMoveButtons {canMoveUp} {canMoveDown} {onMoveUp} {onMoveDown} />
 
     <SearchableSelect
       compact
@@ -281,68 +214,7 @@
       <p class="px-0.5 text-[10px] text-ink-3">
         Tried top to bottom until one matches. Disable ones that look unstable (e.g. a generated id).
       </p>
-      {#each field.selectors as candidate, index}
-        {@const isEnabled = candidate.enabled !== false}
-        <div class="flex items-center gap-1.5 font-mono text-[11px]">
-          <button
-            type="button"
-            class="shrink-0 p-0.5 {isEnabled ? 'text-accent-500' : 'text-ink-3'}"
-            title={isEnabled ? 'Disable this candidate' : 'Enable this candidate'}
-            aria-label={isEnabled ? 'Disable selector candidate' : 'Enable selector candidate'}
-            onclick={() => toggleSelectorEnabled(index)}
-          >
-            {#if isEnabled}
-              <CheckSquareIcon size={13} weight="fill" />
-            {:else}
-              <SquareIcon size={13} />
-            {/if}
-          </button>
-          <span class="w-16 shrink-0 uppercase tracking-wide {isEnabled ? 'text-ink-2' : 'text-ink-3'}">
-            {candidate.strategy}
-          </span>
-          <input
-            class="min-w-0 flex-1 rounded-md border border-hair bg-canvas px-1.5 py-1 text-ink-1 outline-none focus:bg-surface-hover {isEnabled
-              ? ''
-              : 'text-ink-3 line-through'}"
-            value={candidate.value}
-            oninput={(event) => updateSelectorValue(index, (event.currentTarget as HTMLInputElement).value)}
-          />
-          <button
-            type="button"
-            class="shrink-0 p-0.5 text-ink-3 hover:text-red-400 disabled:pointer-events-none disabled:opacity-30"
-            title="Remove candidate"
-            aria-label="Remove selector candidate"
-            disabled={field.selectors.length <= 1}
-            onclick={() => removeSelector(index)}
-          >
-            <TrashIcon size={12} weight="bold" />
-          </button>
-        </div>
-      {/each}
-
-      <div class="mt-1.5 flex items-center gap-1.5 border-t border-hair pt-1.5">
-        <SearchableSelect
-          compact
-          ariaLabel="New selector strategy"
-          value={newSelectorStrategy}
-          options={SELECTOR_STRATEGY_OPTIONS}
-          onChange={(strategy) => (newSelectorStrategy = strategy as SelectorCandidate['strategy'])}
-        />
-        <input
-          class="min-w-0 flex-1 rounded border border-dashed border-white/20 bg-transparent px-1.5 py-0.5 font-mono text-[11px] text-ink-1 outline-none placeholder:text-ink-3"
-          placeholder="Type a value to match this by…"
-          bind:value={newSelectorValue}
-          onkeydown={(event) => event.key === 'Enter' && addSelector()}
-        />
-        <button
-          type="button"
-          class="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-accent-500 hover:bg-accent-500/10"
-          onclick={addSelector}
-        >
-          <PlusIcon size={11} weight="bold" />
-          Add
-        </button>
-      </div>
+      <SelectorCandidateEditor selectors={field.selectors} onChange={(selectors) => onChange({ ...field, selectors })} />
     </div>
   {/if}
 
@@ -382,12 +254,13 @@
         onChange={setCustomId}
       />
       {#if field.generator.generatorId}
+        {@const generatorId = field.generator.generatorId}
         <button
           type="button"
           class="rounded-md p-1.5 text-ink-3 hover:bg-surface-hover hover:text-ink-1"
           title="Edit generator code"
           aria-label="Edit generator code"
-          onclick={() => onFocusGenerator((field.generator as { generatorId: string }).generatorId)}
+          onclick={() => onFocusGenerator(generatorId)}
         >
           <PencilSimpleIcon size={14} weight="bold" />
         </button>

@@ -1,12 +1,12 @@
 import { browser } from 'wxt/browser';
 import type { RuntimeMessage } from '../messaging/types';
 import { formScriptSchema, type FormScript } from '../schema/script';
+import { createKeyedStore } from './keyed-store';
 
-const STORAGE_KEY = 'formaster:scripts';
+const store = createKeyedStore<unknown[]>('formaster:scripts');
 
 async function readAll(): Promise<FormScript[]> {
-  const result = await browser.storage.local.get(STORAGE_KEY);
-  const raw = result[STORAGE_KEY];
+  const raw = await store.get();
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((entry) => {
     const parsed = formScriptSchema.safeParse(entry);
@@ -15,7 +15,7 @@ async function readAll(): Promise<FormScript[]> {
 }
 
 async function writeAll(scripts: FormScript[]): Promise<void> {
-  await browser.storage.local.set({ [STORAGE_KEY]: scripts });
+  await store.set(scripts);
 }
 
 export async function listScripts(): Promise<FormScript[]> {
@@ -56,9 +56,14 @@ export async function deleteScript(id: string): Promise<void> {
 async function broadcastRefresh(scriptId: string): Promise<void> {
   try {
     await browser.runtime.sendMessage({ type: 'scripts/refresh', scriptId } satisfies RuntimeMessage);
-  } catch {
-    // No other extension page is listening — expected in the common case
-    // (only one tab open), not an error.
+  } catch (error) {
+    // Both Chrome and Firefox reject with this message when no other
+    // extension page is listening — expected in the common case (only one
+    // tab open), not an error. Anything else is a real failure worth surfacing.
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes('Receiving end does not exist')) {
+      console.error('formaster: failed to broadcast scripts/refresh', error);
+    }
   }
 }
 

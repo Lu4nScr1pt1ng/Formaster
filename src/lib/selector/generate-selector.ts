@@ -70,11 +70,21 @@ function buildCssPath(element: Element): string {
   return parts.join(' > ');
 }
 
+// Capped the same way as buildCssPath: on deeply nested pages (heavy
+// component-framework markup with hundreds of wrapper elements), walking to
+// the document root is both expensive (a previousElementSibling scan per
+// level) and produces a huge, fragile path. Once truncated, `//` (rather
+// than `/`) keeps the path resolvable from wherever it starts.
 function buildXPath(element: Element): string {
   const parts: string[] = [];
   let current: Element | null = element;
+  let truncated = false;
 
   while (current && current.nodeType === Node.ELEMENT_NODE) {
+    if (parts.length >= 6) {
+      truncated = true;
+      break;
+    }
     let index = 1;
     let sibling = current.previousElementSibling;
     while (sibling) {
@@ -85,5 +95,5 @@ function buildXPath(element: Element): string {
     current = current.parentElement;
   }
 
-  return `/${parts.join('/')}`;
+  return `${truncated ? '//' : '/'}${parts.join('/')}`;
 }

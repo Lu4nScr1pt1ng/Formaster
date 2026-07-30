@@ -1,4 +1,4 @@
-import { pick, randomDigits, randomInt } from './random';
+import { getOrCreate, pick, randomDigits, randomInt } from './random';
 
 const MALE_FIRST_NAMES_BR = [
   'Jose', 'Joao', 'Antonio', 'Francisco', 'Carlos', 'Paulo', 'Pedro', 'Lucas',
@@ -123,13 +123,9 @@ function isPersonRecord(value: unknown): value is PersonRecord {
  */
 function currentPersonRecord(options: NameOptions, runContext?: Record<string, unknown>): PersonRecord {
   const locale = options.locale ?? 'br';
-  if (!runContext) return pickPersonRecord(locale, options.gender);
-  const key = `person:${locale}`;
-  const cached = runContext[key];
-  if (isPersonRecord(cached) && (!options.gender || options.gender === cached.gender)) return cached;
-  const record = pickPersonRecord(locale, options.gender);
-  runContext[key] = record;
-  return record;
+  const isValid = (cached: unknown): cached is PersonRecord =>
+    isPersonRecord(cached) && (!options.gender || options.gender === cached.gender);
+  return getOrCreate(runContext, `person:${locale}`, isValid, () => pickPersonRecord(locale, options.gender));
 }
 
 export function generateFirstName(options: NameOptions = {}, runContext?: Record<string, unknown>): string {

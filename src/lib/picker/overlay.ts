@@ -32,6 +32,8 @@ export class PickerOverlay {
   private labelBadge: HTMLDivElement | null = null;
   private counterLabel: HTMLSpanElement | null = null;
   private hoveredElement: Element | null = null;
+  private lastDescribedElement: Element | null = null;
+  private lastDescription = '';
   private mappedElements = new Map<Element, MappedEntry>();
   private active = false;
   private rafId: number | null = null;
@@ -128,6 +130,8 @@ export class PickerOverlay {
     this.labelBadge = null;
     this.counterLabel = null;
     this.hoveredElement = null;
+    this.lastDescribedElement = null;
+    this.lastDescription = '';
     this.lastPointerX = null;
     this.lastPointerY = null;
     this.mappedElements.clear();
@@ -199,8 +203,18 @@ export class PickerOverlay {
     this.highlightBox.style.width = `${rect.width}px`;
     this.highlightBox.style.height = `${rect.height}px`;
 
+    // describeElement() runs detection heuristics (regex tests, a label
+    // querySelector) — recomputing it every animation frame while the mouse
+    // sits still over the same element is wasted work, so it's only rerun
+    // when the hovered element itself changes; the box above still repaints
+    // every frame so it keeps following the element across scroll.
+    if (element !== this.lastDescribedElement) {
+      this.lastDescribedElement = element;
+      this.lastDescription = describeElement(element);
+    }
+
     this.labelBadge.style.display = 'block';
-    this.labelBadge.textContent = describeElement(element);
+    this.labelBadge.textContent = this.lastDescription;
     this.labelBadge.style.left = `${rect.left}px`;
     this.labelBadge.style.top = `${Math.max(rect.top - 20, 0)}px`;
   }

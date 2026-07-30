@@ -1,6 +1,4 @@
-import { browser } from 'wxt/browser';
-
-const PENDING_KEY = 'formaster:pending-picker-script-id';
+import { createKeyedStore } from './keyed-store';
 
 /**
  * Tracks which script (if any) a picker session started from "Add fields" in
@@ -8,15 +6,8 @@ const PENDING_KEY = 'formaster:pending-picker-script-id';
  * script. Persisted (not just in-memory) because MV3 service workers can be
  * killed and restarted between "picker/start-for-script" and "picker/finished".
  */
-export async function setPendingPickerScriptId(scriptId: string): Promise<void> {
-  await browser.storage.local.set({ [PENDING_KEY]: scriptId });
-}
+const store = createKeyedStore<string>('formaster:pending-picker-script-id');
 
-export async function getPendingPickerScriptId(): Promise<string | undefined> {
-  const result = await browser.storage.local.get(PENDING_KEY);
-  return result[PENDING_KEY] as string | undefined;
-}
-
-export async function clearPendingPickerScriptId(): Promise<void> {
-  await browser.storage.local.remove(PENDING_KEY);
-}
+export const setPendingPickerScriptId = store.set;
+export const getPendingPickerScriptId = store.get;
+export const clearPendingPickerScriptId = store.clear;

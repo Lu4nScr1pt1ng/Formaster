@@ -110,10 +110,21 @@
     }
   }
 
+  // Serializing the whole draft is only worth doing while the JSON panel is
+  // actually visible — otherwise every keystroke in any field/generator
+  // editor would re-stringify the entire script for a panel nobody can see.
+  // Debounced: with large custom generator bodies, re-serializing on every
+  // single keystroke elsewhere in the editor is noticeably janky.
   $effect(() => {
-    const serialized = JSON.stringify(draft, null, 2);
-    if (!isJsonEdit) jsonText = serialized;
+    if (!showJsonView || isJsonEdit) return;
+    const snapshot = $state.snapshot(draft);
+    const timer = setTimeout(() => {
+      jsonText = JSON.stringify(snapshot, null, 2);
+    }, 200);
+    return () => clearTimeout(timer);
   });
+
+  const fieldCount = $derived(draft.steps.filter((step) => step.type === 'field').length);
 
   function handleJsonChange(text: string): void {
     jsonText = text;
@@ -126,11 +137,12 @@
     }
   }
 
+  function makeGenerator(name: string): CustomGenerator {
+    return { id: crypto.randomUUID(), name, code: 'return "value";', optionsSchema: [] };
+  }
+
   function addCustomGenerator(): void {
-    draft.customGenerators = [
-      ...draft.customGenerators,
-      { id: crypto.randomUUID(), name: `Generator ${draft.customGenerators.length + 1}`, code: 'return "value";', optionsSchema: [] },
-    ];
+    draft.customGenerators = [...draft.customGenerators, makeGenerator(`Generator ${draft.customGenerators.length + 1}`)];
   }
 
   function removeCustomGenerator(id: string): void {
@@ -168,12 +180,7 @@
   function createAndAssignGenerator(index: number): void {
     const step = draft.steps[index];
     if (step.type !== 'field') return;
-    const newGenerator = {
-      id: crypto.randomUUID(),
-      name: `Generator ${draft.customGenerators.length + 1}`,
-      code: 'return "value";',
-      optionsSchema: [],
-    };
+    const newGenerator = makeGenerator(`Generator ${draft.customGenerators.length + 1}`);
     draft.customGenerators = [...draft.customGenerators, newGenerator];
     updateField(index, { ...step.field, generator: { kind: 'custom', generatorId: newGenerator.id } });
     requestAnimationFrame(() => focusGenerator(newGenerator.id));
@@ -341,7 +348,9 @@
     // `draft` is a live $state proxy; the messaging API structured-clones its
     // payload and throws on a raw proxy, so snapshot before sending.
     const snapshot = $state.snapshot(draft);
-    await onSave(snapshot);
+    const saved = await onSave(snapshot);
+    lastSyncedUpdatedAt = saved.updatedAt;
+    draft.updatedAt = saved.updatedAt;
     pushToast('Switching to the target page — click elements to add, then Finish', 'info', 4000);
     await browser.runtime.sendMessage({
       type: 'picker/start-for-script',
@@ -463,7 +472,7 @@
       <section>
         <div class="mb-2 flex flex-wrap items-center justify-between gap-y-1.5">
           <h2 class="text-[11px] font-semibold uppercase tracking-wider text-ink-3">
-            Fields ({draft.steps.filter((step) => step.type === 'field').length})
+            Fields ({fieldCount})
           </h2>
           <div class="flex flex-wrap items-center gap-y-1 gap-x-3">
             <button

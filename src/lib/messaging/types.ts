@@ -1,3 +1,4 @@
+import type { FillResult } from '../filler/fill-script';
 import type { GeneratorRunContext } from '../generators';
 import type { DetectedGenerator } from '../picker/detect-generator';
 import type { FieldElementType, FormScript, SelectorCandidate } from '../schema/script';
@@ -51,8 +52,5 @@ export interface ExistingPickedField {
   selectors: SelectorCandidate[];
 }
 
-export interface FillFieldResult {
-  fieldId: string;
-  status: 'filled' | 'not-found' | 'error';
-  message?: string;
-}
+/** Same shape produced by `fillScript()` — kept as one alias so the message boundary and the filler share a single source of truth. */
+export type FillFieldResult = FillResult;

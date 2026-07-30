@@ -1,4 +1,4 @@
-import { pick, randomDigits, randomInt } from './random';
+import { getOrCreate, pick, randomDigits, randomInt } from './random';
 import { generateAddressNumber, generateAddressStreet } from './person';
 
 /**
@@ -62,25 +62,18 @@ function pickAddressBrRecord(): AddressBrRecord {
 
 const RUN_CONTEXT_KEY = 'addressBr';
 
+function isAddressBrRecord(value: unknown): value is AddressBrRecord {
+  return typeof value === 'object' && value !== null && 'cep' in value && 'city' in value;
+}
+
 /**
  * Returns the address record for the current fill run, generating and
  * caching one on first use so every field pulling from this (cep, city,
  * state, neighborhood) resolves to the *same* address instead of each
- * picking an unrelated random one. Falls back to a fresh one-off record
- * when there's no run context to cache into (e.g. called directly, outside
- * a script run).
+ * picking an unrelated random one.
  */
 function currentAddressBrRecord(runContext?: Record<string, unknown>): AddressBrRecord {
-  if (!runContext) return pickAddressBrRecord();
-  const cached = runContext[RUN_CONTEXT_KEY];
-  if (isAddressBrRecord(cached)) return cached;
-  const record = pickAddressBrRecord();
-  runContext[RUN_CONTEXT_KEY] = record;
-  return record;
-}
-
-function isAddressBrRecord(value: unknown): value is AddressBrRecord {
-  return typeof value === 'object' && value !== null && 'cep' in value && 'city' in value;
+  return getOrCreate(runContext, RUN_CONTEXT_KEY, isAddressBrRecord, pickAddressBrRecord);
 }
 
 export interface AddressCepOptions {

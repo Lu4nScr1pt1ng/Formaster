@@ -1,28 +1,12 @@
 <script lang="ts">
-  import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon';
-  import CaretUpIcon from 'phosphor-svelte/lib/CaretUpIcon';
-  import CheckSquareIcon from 'phosphor-svelte/lib/CheckSquareIcon';
   import CodeIcon from 'phosphor-svelte/lib/CodeIcon';
   import HourglassIcon from 'phosphor-svelte/lib/HourglassIcon';
-  import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
-  import SquareIcon from 'phosphor-svelte/lib/SquareIcon';
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
-  import { waitConditionSchema, type SelectorCandidate, type WaitForStep } from '../lib/schema/script';
-
-  const SELECTOR_STRATEGIES: SelectorCandidate['strategy'][] = [
-    'id',
-    'name',
-    'data-testid',
-    'aria-label',
-    'css',
-    'xpath',
-  ];
-  const SELECTOR_STRATEGY_OPTIONS: SearchableSelectOption[] = SELECTOR_STRATEGIES.map((strategy) => ({
-    value: strategy,
-    label: strategy,
-  }));
+  import SelectorCandidateEditor from './SelectorCandidateEditor.svelte';
+  import StepMoveButtons from './StepMoveButtons.svelte';
+  import { waitConditionSchema, type WaitForStep } from '../lib/schema/script';
 
   const WAIT_CONDITIONS = waitConditionSchema.options;
 
@@ -51,8 +35,6 @@
 
   let expanded = $state(false);
   let confirmRemoveOpen = $state(false);
-  let newSelectorStrategy = $state<SelectorCandidate['strategy']>('css');
-  let newSelectorValue = $state('');
 
   function setCondition(value: string): void {
     onChange({ ...step, condition: value as WaitForStep['condition'] });
@@ -60,33 +42,6 @@
 
   function setTimeoutMs(value: string): void {
     onChange({ ...step, timeoutMs: Math.max(1, Number(value) || 0) });
-  }
-
-  function toggleSelectorEnabled(index: number): void {
-    const selectors = step.selectors.map((candidate, i) =>
-      i === index ? { ...candidate, enabled: candidate.enabled === false } : candidate,
-    );
-    onChange({ ...step, selectors });
-  }
-
-  function updateSelectorValue(index: number, value: string): void {
-    const selectors = step.selectors.map((candidate, i) => (i === index ? { ...candidate, value } : candidate));
-    onChange({ ...step, selectors });
-  }
-
-  function removeSelector(index: number): void {
-    if (step.selectors.length <= 1) return;
-    onChange({ ...step, selectors: step.selectors.filter((_, i) => i !== index) });
-  }
-
-  function addSelector(): void {
-    const value = newSelectorValue.trim();
-    if (!value) return;
-    onChange({
-      ...step,
-      selectors: [...step.selectors, { strategy: newSelectorStrategy, value, enabled: true }],
-    });
-    newSelectorValue = '';
   }
 
   function confirmRemove(): void {
@@ -97,28 +52,7 @@
 
 <div class="rounded-xl border border-dashed border-white/12 p-2.5">
   <div class="flex flex-wrap items-center gap-y-1.5 gap-x-2">
-    <div class="flex shrink-0 flex-col">
-      <button
-        type="button"
-        class="rounded p-0.5 text-ink-3 hover:bg-surface-hover hover:text-ink-1 disabled:pointer-events-none disabled:opacity-25"
-        title="Move up"
-        aria-label="Move up"
-        disabled={!canMoveUp}
-        onclick={onMoveUp}
-      >
-        <CaretUpIcon size={11} weight="bold" />
-      </button>
-      <button
-        type="button"
-        class="rounded p-0.5 text-ink-3 hover:bg-surface-hover hover:text-ink-1 disabled:pointer-events-none disabled:opacity-25"
-        title="Move down"
-        aria-label="Move down"
-        disabled={!canMoveDown}
-        onclick={onMoveDown}
-      >
-        <CaretDownIcon size={11} weight="bold" />
-      </button>
-    </div>
+    <StepMoveButtons {canMoveUp} {canMoveDown} {onMoveUp} {onMoveDown} />
 
     <HourglassIcon size={15} class="shrink-0 text-ink-3" />
     <span class="text-sm font-medium text-ink-2">Wait until element</span>
@@ -161,68 +95,7 @@
   {#if expanded}
     <div class="mt-2.5 space-y-1.5 border-t border-hair pt-2.5">
       <p class="px-0.5 text-[10px] text-ink-3">Element to watch — tried top to bottom until one matches.</p>
-      {#each step.selectors as candidate, index}
-        {@const isEnabled = candidate.enabled !== false}
-        <div class="flex items-center gap-1.5 font-mono text-[11px]">
-          <button
-            type="button"
-            class="shrink-0 p-0.5 {isEnabled ? 'text-accent-500' : 'text-ink-3'}"
-            title={isEnabled ? 'Disable this candidate' : 'Enable this candidate'}
-            aria-label={isEnabled ? 'Disable selector candidate' : 'Enable selector candidate'}
-            onclick={() => toggleSelectorEnabled(index)}
-          >
-            {#if isEnabled}
-              <CheckSquareIcon size={13} weight="fill" />
-            {:else}
-              <SquareIcon size={13} />
-            {/if}
-          </button>
-          <span class="w-16 shrink-0 uppercase tracking-wide {isEnabled ? 'text-ink-2' : 'text-ink-3'}">
-            {candidate.strategy}
-          </span>
-          <input
-            class="min-w-0 flex-1 rounded-md border border-hair bg-canvas px-1.5 py-1 text-ink-1 outline-none focus:bg-surface-hover {isEnabled
-              ? ''
-              : 'text-ink-3 line-through'}"
-            value={candidate.value}
-            oninput={(event) => updateSelectorValue(index, (event.currentTarget as HTMLInputElement).value)}
-          />
-          <button
-            type="button"
-            class="shrink-0 p-0.5 text-ink-3 hover:text-red-400 disabled:pointer-events-none disabled:opacity-30"
-            title="Remove candidate"
-            aria-label="Remove selector candidate"
-            disabled={step.selectors.length <= 1}
-            onclick={() => removeSelector(index)}
-          >
-            <TrashIcon size={12} weight="bold" />
-          </button>
-        </div>
-      {/each}
-
-      <div class="mt-1.5 flex items-center gap-1.5 border-t border-hair pt-1.5">
-        <SearchableSelect
-          compact
-          ariaLabel="New selector strategy"
-          value={newSelectorStrategy}
-          options={SELECTOR_STRATEGY_OPTIONS}
-          onChange={(strategy) => (newSelectorStrategy = strategy as SelectorCandidate['strategy'])}
-        />
-        <input
-          class="min-w-0 flex-1 rounded border border-dashed border-white/20 bg-transparent px-1.5 py-0.5 font-mono text-[11px] text-ink-1 outline-none placeholder:text-ink-3"
-          placeholder="Type a value to match this by…"
-          bind:value={newSelectorValue}
-          onkeydown={(event) => event.key === 'Enter' && addSelector()}
-        />
-        <button
-          type="button"
-          class="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-accent-500 hover:bg-accent-500/10"
-          onclick={addSelector}
-        >
-          <PlusIcon size={11} weight="bold" />
-          Add
-        </button>
-      </div>
+      <SelectorCandidateEditor selectors={step.selectors} onChange={(selectors) => onChange({ ...step, selectors })} />
     </div>
   {/if}
 </div>

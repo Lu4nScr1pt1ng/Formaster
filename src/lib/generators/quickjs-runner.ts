@@ -2,6 +2,8 @@ import type { InterruptHandler, QuickJSContext, QuickJSHandle, QuickJSWASMModule
 import { BUILTIN_GENERATORS, type GeneratorRunContext } from './index';
 
 const EXECUTION_TIMEOUT_MS = 3000;
+const MEMORY_LIMIT_BYTES = 16 * 1024 * 1024;
+const MAX_STACK_SIZE_BYTES = 1024 * 1024;
 
 interface QuickJSHandles {
   module: QuickJSWASMModule;
@@ -61,6 +63,11 @@ export async function runCustomCode(
 
   try {
     vm.runtime.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + EXECUTION_TIMEOUT_MS));
+    // The interrupt handler only bounds wall-clock time — without these, a
+    // generator that allocates in a tight loop (e.g. an ever-growing array)
+    // could exhaust memory before the deadline check ever fires.
+    vm.runtime.setMemoryLimit(MEMORY_LIMIT_BYTES);
+    vm.runtime.setMaxStackSize(MAX_STACK_SIZE_BYTES);
 
     setHelpers(vm, runContext);
     setJsonGlobal(vm, 'options', options ?? {});

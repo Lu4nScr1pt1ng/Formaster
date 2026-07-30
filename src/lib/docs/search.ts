@@ -84,10 +84,11 @@ export function search(sections: DocSection[], query: string, limit = 8): Search
   const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return [];
 
+  const normalizedQuery = terms.join(' ');
+
   const scored = getIndex(sections).map((indexed) => {
-    let score = 0;
+    let score = indexed.titleLower === normalizedQuery ? 50 : 0;
     for (const term of terms) {
-      if (indexed.titleLower === query.toLowerCase().trim()) score += 50;
       if (indexed.titleLower.includes(term)) score += 20;
       score += countOccurrences(indexed.bodyLower, term) * 3;
     }

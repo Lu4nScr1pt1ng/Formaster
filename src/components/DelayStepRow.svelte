@@ -1,9 +1,8 @@
 <script lang="ts">
-  import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon';
-  import CaretUpIcon from 'phosphor-svelte/lib/CaretUpIcon';
   import TimerIcon from 'phosphor-svelte/lib/TimerIcon';
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import StepMoveButtons from './StepMoveButtons.svelte';
   import type { DelayStep } from '../lib/schema/script';
 
   interface Props {
@@ -31,28 +30,7 @@
 </script>
 
 <div class="flex flex-wrap items-center gap-y-1.5 gap-x-2 rounded-xl border border-dashed border-white/12 p-2.5">
-  <div class="flex shrink-0 flex-col">
-    <button
-      type="button"
-      class="rounded p-0.5 text-ink-3 hover:bg-surface-hover hover:text-ink-1 disabled:pointer-events-none disabled:opacity-25"
-      title="Move up"
-      aria-label="Move up"
-      disabled={!canMoveUp}
-      onclick={onMoveUp}
-    >
-      <CaretUpIcon size={11} weight="bold" />
-    </button>
-    <button
-      type="button"
-      class="rounded p-0.5 text-ink-3 hover:bg-surface-hover hover:text-ink-1 disabled:pointer-events-none disabled:opacity-25"
-      title="Move down"
-      aria-label="Move down"
-      disabled={!canMoveDown}
-      onclick={onMoveDown}
-    >
-      <CaretDownIcon size={11} weight="bold" />
-    </button>
-  </div>
+  <StepMoveButtons {canMoveUp} {canMoveDown} {onMoveUp} {onMoveDown} />
 
   <TimerIcon size={15} class="shrink-0 text-ink-3" />
   <span class="text-sm font-medium text-ink-2">Wait</span>

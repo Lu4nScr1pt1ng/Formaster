@@ -17,7 +17,7 @@ function splitFragment(pattern: string): { base: string; fragment: string | null
   return { base: pattern.slice(0, hashIndex), fragment: pattern.slice(hashIndex) };
 }
 
-function patternToRegExp(pattern: string): RegExp {
+function compilePatternRegExp(pattern: string): RegExp {
   if (pattern === '<all_urls>') {
     return /^(https?|file|ftp):\/\/.*$/;
   }
@@ -49,9 +49,31 @@ function patternToRegExp(pattern: string): RegExp {
   return new RegExp(`^${schemePart}:\\/\\/${hostPart}${pathPart}$`);
 }
 
+// Scripts are re-matched against every tab-update/activation event, so the
+// same handful of saved patterns get compiled over and over — cache by the
+// (small, user-authored) pattern string instead of rebuilding the RegExp
+// every call.
+const patternRegExpCache = new Map<string, RegExp>();
+
+function patternToRegExp(pattern: string): RegExp {
+  let regex = patternRegExpCache.get(pattern);
+  if (!regex) {
+    regex = compilePatternRegExp(pattern);
+    patternRegExpCache.set(pattern, regex);
+  }
+  return regex;
+}
+
+const fragmentRegExpCache = new Map<string, RegExp>();
+
 function fragmentToRegExp(fragment: string): RegExp {
-  const escaped = escapeRegExp(fragment).replace(/\\\*/g, '.*');
-  return new RegExp(`^${escaped}`);
+  let regex = fragmentRegExpCache.get(fragment);
+  if (!regex) {
+    const escaped = escapeRegExp(fragment).replace(/\\\*/g, '.*');
+    regex = new RegExp(`^${escaped}`);
+    fragmentRegExpCache.set(fragment, regex);
+  }
+  return regex;
 }
 
 function escapeRegExp(value: string): string {

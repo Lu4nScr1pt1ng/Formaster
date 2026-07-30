@@ -27,6 +27,9 @@
   let activeTabId = $state<number | null>(null);
   let runState = $state<Record<string, RunState>>({});
   let runSummary = $state<Record<string, string>>({});
+  // Tracks the pending "reset to idle" timeout per script, so a second Run
+  // click doesn't get its state stomped by the first click's stale timer.
+  const idleTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
   const pageLabel = $derived(safePageLabel(currentUrl));
 
@@ -41,6 +44,8 @@
 
   async function runScript(script: FormScript): Promise<void> {
     if (activeTabId == null) return;
+    clearTimeout(idleTimers[script.id]);
+    delete idleTimers[script.id];
     runState = { ...runState, [script.id]: 'running' };
     try {
       // `script` is a live $state proxy element (from matchingScripts); the
@@ -60,7 +65,8 @@
       runSummary = { ...runSummary, [script.id]: 'Could not reach this page' };
       runState = { ...runState, [script.id]: 'error' };
     } finally {
-      setTimeout(() => {
+      idleTimers[script.id] = setTimeout(() => {
+        delete idleTimers[script.id];
         runState = { ...runState, [script.id]: 'idle' };
       }, 2200);
     }
