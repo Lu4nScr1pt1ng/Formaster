@@ -65,6 +65,20 @@ function randomOptionIndex(select: HTMLSelectElement): number {
   return Array.from(select.options).indexOf(chosen);
 }
 
+/**
+ * `input.files` has no public setter — the only way to assign it
+ * synthetically is through a `DataTransfer`, the same mechanism a real
+ * drag-and-drop uses. Some sites reject non-trusted `change` events on file
+ * inputs entirely; that's a real limitation shared with every other synthetic
+ * fill this extension does, not something specific to this path.
+ */
+export function setFileInputValue(element: HTMLInputElement, file: File): void {
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  element.files = transfer.files;
+  dispatchInputEvents(element);
+}
+
 /** Fallback for custom (non-native) inputs: simulate real focus + keystrokes. */
 export async function simulateTyping(element: HTMLElement, value: string): Promise<void> {
   element.dispatchEvent(new FocusEvent('focus', { bubbles: true }));

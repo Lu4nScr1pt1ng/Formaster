@@ -20,7 +20,9 @@ test('a script saved from the Playground shows up in an already-open options tab
   await expect(playground.locator('input[placeholder="Script name"]')).toHaveValue('Playground example');
 
   await options.bringToFront();
-  await expect(options.getByRole('button', { name: 'Playground example' })).toBeVisible();
+  // Scoped to the entries nested inside a Flow folder — the folder button
+  // itself carries the same label for a single-script Flow.
+  await expect(options.locator('nav [role="group"] button', { hasText: 'Playground example' })).toBeVisible();
 });
 
 /**
@@ -34,18 +36,13 @@ test('a script saved from the Playground shows up in an already-open options tab
  * scripts/refresh broadcast the "existing script" flow already relied on,
  * regardless of whether an options tab happens to be open already.
  */
-test('a fresh script (no prior script existed) shows up in an already-open options tab', async ({
-  context,
-  staticServer,
-  openOptions,
-}) => {
+test('a fresh script (no prior script existed) shows up in an already-open options tab', async ({ context, openOptions, serviceWorker, staticServer }) => {
   // The options tab is open *before* picking starts — the exact precondition that broke.
   const options = await openOptions();
   const fixture = await context.newPage();
   const url = staticServer.url('stripe-style-checkout.html');
   await fixture.goto(url);
 
-  const serviceWorker = context.serviceWorkers()[0];
   await serviceWorker.evaluate(async (targetUrl) => {
     const [tab] = await chrome.tabs.query({ url: targetUrl });
     await chrome.tabs.sendMessage(tab.id!, { type: 'picker/start' });

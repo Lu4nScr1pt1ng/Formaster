@@ -9,7 +9,7 @@
   import PlaygroundForm from '../../components/PlaygroundForm.svelte';
   import ScriptEditor from '../../components/ScriptEditor.svelte';
   import ToastHost from '../../components/ToastHost.svelte';
-  import { fillScript, type FieldValueContext, type FillResult } from '../../lib/filler/fill-script';
+  import { fillScript, type FieldValueContext, type FillResult, type FlowVariables } from '../../lib/filler/fill-script';
   import type { GeneratorRunContext } from '../../lib/generators';
   import { runCustomCode } from '../../lib/generators/quickjs-runner';
   import { initContextMenuFill } from '../../lib/picker/context-menu-fill';
@@ -65,10 +65,11 @@
     activeScript: FormScript,
     context: FieldValueContext,
     generatorRunContext: GeneratorRunContext,
+    flowVars: FlowVariables,
   ): Promise<string | number | boolean> {
     const generator = activeScript.customGenerators.find((entry) => entry.id === generatorId);
     if (!generator) throw new Error(`Custom generator "${generatorId}" not found`);
-    return runCustomCode(generator.code, options, context, generatorRunContext);
+    return runCustomCode(generator.code, options, context, generatorRunContext, flowVars);
   }
 
   async function runOnForm(): Promise<void> {

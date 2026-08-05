@@ -1,6 +1,8 @@
 import { browser } from 'wxt/browser';
+import { downloadJson, slugify } from '../export/download-json';
 import type { RuntimeMessage } from '../messaging/types';
 import { formScriptSchema, type FormScript } from '../schema/script';
+import { deleteFlow } from './flows-store';
 
 // One `browser.storage.local` key per script (`formaster:script:<id>`)
 // instead of one big array under a single key. Saving/deleting a script used
@@ -94,7 +96,13 @@ export async function saveScript(script: FormScript): Promise<FormScript> {
 
 export async function deleteScript(id: string): Promise<void> {
   await migrateLegacyScriptsIfNeeded();
+  const script = await getScript(id);
   await browser.storage.local.remove(scriptKey(id));
+  if (script) {
+    const remaining = await listScripts();
+    const flowStillUsed = remaining.some((other) => other.flowId === script.flowId);
+    if (!flowStillUsed) await deleteFlow(script.flowId);
+  }
   await broadcastRefresh(id);
 }
 
@@ -122,14 +130,12 @@ export function exportScript(script: FormScript): string {
   return JSON.stringify(script, null, 2);
 }
 
-/** Triggers a browser download of `script` as a `.json` file — shared by the Options and Playground export buttons. */
+/**
+ * Triggers a browser download of `script` as a `.json` file — shared by the
+ * Options and Playground export buttons. Exports the script alone: to move a
+ * script that belongs to a multi-script Flow (or whose fields generate files
+ * from a template), export the whole Flow instead — see `flow-bundle-store.ts`.
+ */
 export function downloadScriptAsJson(script: FormScript): void {
-  const json = exportScript(script);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `${script.name.replace(/[^a-z0-9-]+/gi, '-').toLowerCase() || 'script'}.json`;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  downloadJson(script, `${slugify(script.name, 'script')}.json`);
 }

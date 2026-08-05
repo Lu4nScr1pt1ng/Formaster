@@ -1,4 +1,5 @@
 import { focusWindowIfSupported } from '../lib/focus-window';
+import { toTransferableFile, type TransferableFile } from '../lib/generators/file-generators/file-transfer';
 import { runCustomCode } from '../lib/generators/quickjs-runner';
 import type {
   CustomGeneratorRunResult,
@@ -8,10 +9,13 @@ import type {
   RuntimeMessage,
 } from '../lib/messaging/types';
 import { generatorRefFromSuggestion } from '../lib/picker/detect-generator';
+import { getFileTemplate } from '../lib/storage/file-templates-store';
 import { clearPendingPickerSession, getPendingPickerSession, setPendingPickerSession } from '../lib/storage/pending-picker-store';
 import { setReturnTabId } from '../lib/storage/return-tab-store';
 import { getScript, listScripts, saveScript } from '../lib/storage/scripts-store';
+import { saveFlow } from '../lib/storage/flows-store';
 import { createEmptyScript, type FormScript, type ScriptStep } from '../lib/schema/script';
+import { createEmptyFlow } from '../lib/schema/flow';
 import { matchesAnyPattern, patternToNavigableUrl, suggestScriptTarget } from '../lib/url-match';
 
 const MATCH_BADGE_COLOR = '#eea63c';
@@ -105,11 +109,24 @@ export default defineBackground(() => {
       // structured-clone boundary) can merge the update into its own copy,
       // instead of losing it the moment this message resolves.
       const runContext = message.runContext;
-      return runCustomCode(message.code, message.options, message.fields, runContext).then(
+      return runCustomCode(message.code, message.options, message.fields, runContext, message.flowVars).then(
         (value): CustomGeneratorRunResult => ({ value, runContext }),
       );
+    } else if (message.type === 'fileTemplate/renderPdf') {
+      return renderPdfTemplate(message.templateId, message.flowId);
     }
   });
+
+  async function renderPdfTemplate(templateId: string, flowId: string): Promise<TransferableFile> {
+    const template = await getFileTemplate(templateId);
+    if (!template) throw new Error('File template not found — it may have been deleted.');
+    // Dynamically imported so pdf-lib is only ever fetched the first time a
+    // PDF template actually renders — same lazy-load spirit as
+    // `quickjs-runner.ts`'s WASM module, and the whole reason this renders
+    // here instead of in the content script (see `fileTemplate/renderPdf`).
+    const { renderPdf } = await import('../lib/generators/file-generators/render-pdf');
+    return toTransferableFile(await renderPdf(template, flowId));
+  }
 
   // Extensions can't force their popup open on navigation — only a user
   // gesture (clicking the toolbar icon) can do that, in every browser. The
@@ -230,9 +247,10 @@ export default defineBackground(() => {
     }));
   }
 
-  function buildNewScriptFromFields(pageUrl: string, fields: PickedField[]): FormScript {
+  async function buildNewScriptFromFields(pageUrl: string, fields: PickedField[]): Promise<FormScript> {
     const { name, urlPattern } = suggestScriptTarget(pageUrl);
-    const script = createEmptyScript(name, urlPattern);
+    const flow = await saveFlow(createEmptyFlow(name));
+    const script = createEmptyScript(name, urlPattern, flow.id);
     script.steps = fieldsToSteps(fields);
     return script;
   }
@@ -269,7 +287,7 @@ export default defineBackground(() => {
       // while picking — fall through and create a fresh one instead of
       // silently losing the fields the user just picked.
     }
-    script ??= buildNewScriptFromFields(pageUrl, fields);
+    script ??= await buildNewScriptFromFields(pageUrl, fields);
 
     // Always a real, saved script from here on — no more "draft" concept.
     // That used to mean stashing picked fields in storage and hoping the

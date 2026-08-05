@@ -17,7 +17,7 @@ import { test, expect } from './fixtures/extension';
  * picker flow — the same kind `handleRunFirstMatchingScript` would look up
  * and send — actually fills the page when run.
  */
-test('a saved, page-matching script fills the page when run', async ({ context, staticServer, openOptions }) => {
+test('a saved, page-matching script fills the page when run', async ({ context, openOptions, serviceWorker, staticServer }) => {
   const fixture = await context.newPage();
   const url = staticServer.url('stripe-style-checkout.html');
   await fixture.goto(url);
@@ -44,7 +44,6 @@ test('a saved, page-matching script fills the page when run', async ({ context, 
   // handleRunFirstMatchingScript would — proves a script produced by the
   // normal picker flow actually works end to end when run this way, not
   // just a hand-built test fixture script.
-  const serviceWorker = context.serviceWorkers()[0];
   await serviceWorker.evaluate(async (targetUrl) => {
     const stored = await chrome.storage.local.get(null);
     const scripts = Object.entries(stored)
@@ -58,12 +57,11 @@ test('a saved, page-matching script fills the page when run', async ({ context, 
   await expect(fixture.locator('#email')).toHaveValue(/^[^@]+@[^@]+\.[^@]+$/);
 });
 
-test('reports when no script matches the page instead of doing nothing silently', async ({ context, staticServer }) => {
+test('reports when no script matches the page instead of doing nothing silently', async ({ context, serviceWorker, staticServer }) => {
   const page = await context.newPage();
   const url = staticServer.url('conditional-address-form.html');
   await page.goto(url);
 
-  const serviceWorker = context.serviceWorkers()[0];
   await serviceWorker.evaluate(async (targetUrl) => {
     const [tab] = await chrome.tabs.query({ url: targetUrl });
     await chrome.tabs.sendMessage(tab.id!, { type: 'contextmenu/no-script-found' });

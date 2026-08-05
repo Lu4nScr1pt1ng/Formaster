@@ -3,7 +3,9 @@
   import CopySimpleIcon from 'phosphor-svelte/lib/CopySimpleIcon';
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon';
   import PlayIcon from 'phosphor-svelte/lib/PlayIcon';
+  import PlusIcon from 'phosphor-svelte/lib/PlusIcon';
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
+  import XIcon from 'phosphor-svelte/lib/XIcon';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import GeneratorOptionsEditor from './GeneratorOptionsEditor.svelte';
   import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
@@ -13,6 +15,7 @@
   import { createFlashTimer } from '../lib/flash-timer';
   import { BUILTIN_GENERATOR_LABELS } from '../lib/generators';
   import { BUILTIN_GENERATOR_OPTION_FIELDS } from '../lib/generators/option-fields';
+  import type { FileTemplate } from '../lib/schema/file-template';
   import {
     fieldElementTypeSchema,
     type BuiltinGeneratorId,
@@ -35,10 +38,14 @@
   ];
 
   const NEW_GENERATOR_VALUE = '__new__';
+  const NEW_TEMPLATE_VALUE = '__new_template__';
 
   interface Props {
     field: FieldMapping;
     customGenerators: CustomGenerator[];
+    fileTemplates: FileTemplate[];
+    /** Every `saveAsFlowVariable` key already used by another field in the same Flow — offered as datalist suggestions. */
+    flowVariableKeys: string[];
     canMoveUp: boolean;
     canMoveDown: boolean;
     startExpanded?: boolean;
@@ -50,11 +57,15 @@
     onPreview: () => Promise<string>;
     onCreateGenerator: () => void;
     onFocusGenerator: (id: string) => void;
+    onCreateFileTemplate: () => void;
+    onEditFileTemplate: (templateId: string) => void;
   }
 
   let {
     field,
     customGenerators,
+    fileTemplates,
+    flowVariableKeys,
     canMoveUp,
     canMoveDown,
     startExpanded = false,
@@ -66,7 +77,15 @@
     onPreview,
     onCreateGenerator,
     onFocusGenerator,
+    onCreateFileTemplate,
+    onEditFileTemplate,
   }: Props = $props();
+
+  // `field.id` is stable for this component instance's whole life — the
+  // `#each` in ScriptEditor keys FieldRow by field id, so a different id
+  // means a fresh instance, never a reassignment of this one's `field` prop.
+  // svelte-ignore state_referenced_locally
+  const flowVariableKeysDatalistId = `flow-var-keys-${field.id}`;
 
   let previewValue = $state<string | null>(null);
   let previewError = $state(false);
@@ -86,6 +105,12 @@
     ...(customGenerators.length === 0 ? [{ value: '', label: 'No custom generators yet' }] : []),
     ...customGenerators.map((generator) => ({ value: generator.id, label: generator.name })),
     { value: NEW_GENERATOR_VALUE, label: '+ New generator…' },
+  ]);
+
+  const fileTemplateOptions = $derived<SearchableSelectOption[]>([
+    ...(fileTemplates.length === 0 ? [{ value: '', label: 'No templates yet' }] : []),
+    ...fileTemplates.map((template) => ({ value: template.id, label: template.name })),
+    { value: NEW_TEMPLATE_VALUE, label: '+ New template…' },
   ]);
 
   const selectedCustomGeneratorFields = $derived.by(() => {
@@ -112,6 +137,14 @@
     }
   }
 
+  function setFileTemplateId(value: string): void {
+    if (value === NEW_TEMPLATE_VALUE) {
+      onCreateFileTemplate();
+      return;
+    }
+    onChange({ ...field, generator: { kind: 'file', templateId: value } });
+  }
+
   function setBuiltinId(id: BuiltinGeneratorId): void {
     onChange({ ...field, generator: { kind: 'builtin', id } });
   }
@@ -136,6 +169,19 @@
       return;
     }
     onChange({ ...field, generator: { kind: 'custom', generatorId: value } });
+  }
+
+  function enableSaveAsFlowVariable(): void {
+    onChange({ ...field, options: { ...field.options, saveAsFlowVariable: { key: '' } } });
+  }
+
+  function disableSaveAsFlowVariable(): void {
+    const { saveAsFlowVariable: _drop, ...rest } = field.options ?? {};
+    onChange({ ...field, options: Object.keys(rest).length > 0 ? rest : undefined });
+  }
+
+  function setSaveAsFlowVariableKey(key: string): void {
+    onChange({ ...field, options: { ...field.options, saveAsFlowVariable: { key } } });
   }
 
   async function preview(): Promise<void> {
@@ -217,59 +263,118 @@
   {/if}
 
   <div class="mt-2.5 flex flex-wrap items-center gap-2">
-    <SearchableSelect
-      ariaLabel="Generator kind"
-      value={field.generator.kind}
-      options={GENERATOR_KIND_OPTIONS}
-      onChange={(kind) => setGeneratorKind(kind as GeneratorRef['kind'])}
-    />
-
-    {#if field.generator.kind === 'builtin'}
+    {#if field.elementType === 'file'}
       <SearchableSelect
-        ariaLabel="Built-in generator"
-        value={field.generator.id}
-        options={builtinSelectOptions}
-        onChange={(id) => setBuiltinId(id as BuiltinGeneratorId)}
+        ariaLabel="File template"
+        value={field.generator.kind === 'file' ? field.generator.templateId : ''}
+        options={fileTemplateOptions}
+        onChange={setFileTemplateId}
       />
-      {#if BUILTIN_GENERATOR_OPTION_FIELDS[field.generator.id]}
-        <GeneratorOptionsEditor
-          fields={BUILTIN_GENERATOR_OPTION_FIELDS[field.generator.id] ?? []}
-          value={field.generator.options}
-          onChange={setBuiltinOptions}
-        />
-      {/if}
-    {:else if field.generator.kind === 'fixed'}
-      <input
-        class="rounded-md border border-hair bg-canvas px-2 py-1 text-xs text-ink-1 outline-none focus:border-accent-500"
-        value={field.generator.value}
-        oninput={(event) => setFixedValue((event.currentTarget as HTMLInputElement).value)}
-      />
-    {:else}
-      <SearchableSelect
-        ariaLabel="Custom generator"
-        value={field.generator.generatorId}
-        options={customGeneratorOptions}
-        onChange={setCustomId}
-      />
-      {#if field.generator.generatorId}
-        {@const generatorId = field.generator.generatorId}
+      {#if field.generator.kind === 'file' && field.generator.templateId}
+        {@const templateId = field.generator.templateId}
         <button
           type="button"
           class="rounded-md p-1.5 text-ink-3 hover:bg-surface-hover hover:text-ink-1"
-          title="Edit generator code"
-          aria-label="Edit generator code"
-          onclick={() => onFocusGenerator(generatorId)}
+          title="Edit template"
+          aria-label="Edit template"
+          onclick={() => onEditFileTemplate(templateId)}
         >
           <PencilSimpleIcon size={14} weight="bold" />
         </button>
       {/if}
-      {#if selectedCustomGeneratorFields.length > 0}
-        <GeneratorOptionsEditor
-          fields={selectedCustomGeneratorFields}
-          value={field.generator.options}
-          onChange={setCustomOptions}
+    {:else}
+      <SearchableSelect
+        ariaLabel="Generator kind"
+        value={field.generator.kind}
+        options={GENERATOR_KIND_OPTIONS}
+        onChange={(kind) => setGeneratorKind(kind as GeneratorRef['kind'])}
+      />
+
+      {#if field.generator.kind === 'builtin'}
+        <SearchableSelect
+          ariaLabel="Built-in generator"
+          value={field.generator.id}
+          options={builtinSelectOptions}
+          onChange={(id) => setBuiltinId(id as BuiltinGeneratorId)}
         />
+        {#if BUILTIN_GENERATOR_OPTION_FIELDS[field.generator.id]}
+          <GeneratorOptionsEditor
+            fields={BUILTIN_GENERATOR_OPTION_FIELDS[field.generator.id] ?? []}
+            value={field.generator.options}
+            onChange={setBuiltinOptions}
+          />
+        {/if}
+      {:else if field.generator.kind === 'fixed'}
+        <input
+          class="rounded-md border border-hair bg-canvas px-2 py-1 text-xs text-ink-1 outline-none focus:border-accent-500"
+          value={field.generator.value}
+          placeholder="Value, or {'{{flowVariable}}'}"
+          title="A {'{{key}}'} placeholder is replaced with that flow variable's value at fill time."
+          oninput={(event) => setFixedValue((event.currentTarget as HTMLInputElement).value)}
+        />
+      {:else if field.generator.kind === 'custom'}
+        <SearchableSelect
+          ariaLabel="Custom generator"
+          value={field.generator.generatorId}
+          options={customGeneratorOptions}
+          onChange={setCustomId}
+        />
+        {#if field.generator.generatorId}
+          {@const generatorId = field.generator.generatorId}
+          <button
+            type="button"
+            class="rounded-md p-1.5 text-ink-3 hover:bg-surface-hover hover:text-ink-1"
+            title="Edit generator code"
+            aria-label="Edit generator code"
+            onclick={() => onFocusGenerator(generatorId)}
+          >
+            <PencilSimpleIcon size={14} weight="bold" />
+          </button>
+        {/if}
+        {#if selectedCustomGeneratorFields.length > 0}
+          <GeneratorOptionsEditor
+            fields={selectedCustomGeneratorFields}
+            value={field.generator.options}
+            onChange={setCustomOptions}
+          />
+        {/if}
       {/if}
+    {/if}
+  </div>
+
+  <div class="mt-2 flex flex-wrap items-center gap-1.5">
+    {#if field.options?.saveAsFlowVariable}
+      <span class="text-[11px] text-ink-3">Save as flow variable:</span>
+      <input
+        class="w-36 rounded-md border border-hair bg-canvas px-1.5 py-0.5 font-mono text-xs text-ink-1 outline-none focus:border-accent-500"
+        list={flowVariableKeysDatalistId}
+        placeholder="key"
+        value={field.options.saveAsFlowVariable.key}
+        oninput={(event) => setSaveAsFlowVariableKey((event.currentTarget as HTMLInputElement).value)}
+      />
+      <datalist id={flowVariableKeysDatalistId}>
+        {#each flowVariableKeys as key (key)}
+          <option value={key}></option>
+        {/each}
+      </datalist>
+      <button
+        type="button"
+        class="rounded-md p-1 text-ink-3 hover:bg-red-500/10 hover:text-red-400"
+        title="Stop saving as flow variable"
+        aria-label="Stop saving as flow variable"
+        onclick={disableSaveAsFlowVariable}
+      >
+        <XIcon size={11} weight="bold" />
+      </button>
+    {:else}
+      <button
+        type="button"
+        class="flex items-center gap-1 text-[11px] font-medium text-ink-3 transition hover:text-accent-500"
+        onclick={enableSaveAsFlowVariable}
+      >
+        <PlusIcon size={10} weight="bold" />
+        Save as flow variable
+      </button>
     {/if}
   </div>
 

@@ -8,6 +8,7 @@ function buildScript(name: string): FormScript {
     schemaVersion: 1,
     id: randomUUID(),
     name,
+    flowId: randomUUID(),
     urlPatterns: ['*://example.com/*'],
     steps: [
       {
@@ -42,13 +43,20 @@ test('import → export → re-import round-trips a script exactly', async ({ op
     buffer: Buffer.from(JSON.stringify(original)),
   });
   await expect(options.locator('text=/Valid — "E2E round-trip script"/')).toBeVisible();
+  // The dialog also accepts whole-flow bundles now; a plain script must not
+  // be mistaken for one (see flow-import-export.spec.ts for that shape).
+  await expect(options.locator('text=/Valid — flow/')).toHaveCount(0);
   await options.getByRole('button', { name: 'Import', exact: true }).last().click();
 
-  await expect(options.locator(`button:has-text("${original.name}")`)).toBeVisible();
+  // Scoped to the entries nested inside a Flow folder: a single-script
+  // Flow's folder carries the script's own name, so a plain `nav button`
+  // would match the folder too (and the Flow picker in the editor besides).
+  await expect(options.locator('nav [role="group"] button', { hasText: original.name })).toBeVisible();
   await expect(options.locator('input[placeholder="Script name"]')).toHaveValue(original.name);
 
   const downloadPromise = options.waitForEvent('download');
-  await options.getByRole('button', { name: 'Export' }).click();
+  // `exact` because the sidebar's folder rows also carry an "Export flow" button.
+  await options.getByRole('button', { name: 'Export', exact: true }).click();
   const download = await downloadPromise;
   const exportedText = await download.createReadStream().then(
     (stream) =>
@@ -73,7 +81,7 @@ test('import → export → re-import round-trips a script exactly', async ({ op
   // proven both directions, not just export.
   await options.getByRole('button', { name: 'Delete' }).click();
   await options.getByRole('button', { name: 'Delete', exact: true }).last().click();
-  await expect(options.locator(`button:has-text("${original.name}")`)).toHaveCount(0);
+  await expect(options.locator('nav [role="group"] button', { hasText: original.name })).toHaveCount(0);
 
   await options.getByRole('button', { name: 'Import' }).click();
   await options.locator('input[type="file"]').setInputFiles({
@@ -86,6 +94,45 @@ test('import → export → re-import round-trips a script exactly', async ({ op
 
   await expect(options.locator('input[placeholder="Script name"]')).toHaveValue(original.name);
   await expect(options.locator('text=Fields (1)')).toBeVisible();
+});
+
+/**
+ * The Replace branch parks the pending script in `$state` before writing it,
+ * and `$state` deep-proxies arrays — Chrome turns a proxied array into
+ * `{"0": …}` inside `storage.local`, so the record fails `safeParse` on the
+ * next read and vanishes. The round-trip test above deletes before
+ * re-importing, so it never takes this branch; this does.
+ */
+test('replacing a colliding script keeps its fields intact', async ({ openOptions, serviceWorker }) => {
+  const options = await openOptions();
+  const original = buildScript('E2E replace target');
+  const upload = async () => {
+    await options.getByRole('button', { name: 'Import' }).click();
+    await options.locator('input[type="file"]').setInputFiles({
+      name: 'script.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(original)),
+    });
+    await options.getByRole('button', { name: 'Import', exact: true }).last().click();
+  };
+
+  await upload();
+  await expect(options.locator('text=Fields (1)')).toBeVisible();
+
+  // Same id again → the collision path.
+  await upload();
+  await options.getByRole('button', { name: 'Replace', exact: true }).click();
+  await expect(options.locator('text=Fields (1)')).toBeVisible();
+
+  // Still a real array in storage, so the script survives the next read.
+  const stored = await serviceWorker.evaluate(
+    async (key) => (await chrome.storage.local.get(key))[key],
+    `formaster:script:${original.id}`,
+  );
+  expect(Array.isArray((stored as { steps: unknown }).steps)).toBe(true);
+  expect(Array.isArray((stored as { urlPatterns: unknown }).urlPatterns)).toBe(true);
+  await options.reload();
+  await expect(options.locator('nav [role="group"] button', { hasText: original.name })).toBeVisible();
 });
 
 test('importing invalid JSON is rejected with a clear error, not silently accepted', async ({ openOptions }) => {

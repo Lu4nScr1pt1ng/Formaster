@@ -170,6 +170,7 @@ export function buildPlaygroundScript(): FormScript {
     id: crypto.randomUUID(),
     name: 'Playground example',
     description: 'Demonstrates every field type, a disabled-until-filled field, and custom generators reading earlier fields.',
+    flowId: crypto.randomUUID(),
     urlPatterns: ['formaster://playground'],
     steps,
     customGenerators,

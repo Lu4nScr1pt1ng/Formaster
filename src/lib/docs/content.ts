@@ -29,6 +29,7 @@ export const DOC_CATEGORIES = [
   'Sequencing',
   'Generators',
   'Referencing other fields',
+  'Flows & generated files',
   'JSON reference',
   'Worked example',
   'Quick actions',
@@ -181,6 +182,7 @@ export const DOC_SECTIONS: DocSection[] = [
           ['`radio`', 'Finds the radio in the same `name` group whose `value` attribute matches `options.radioValue` (or, if unset, the generated value itself), and checks that one.'],
           ['`select`', 'Sets the matching `<option value>` if one exists; otherwise picks a random enabled, non-empty option — so a fixed/generated value that doesn\'t exist on this particular page never leaves the field unset.'],
           ['`custom`', 'For anything that isn\'t a native input/select/textarea (a React/Vue-style widget). Simulates a real focus and click, then per-character keydown/input/keyup, then a final change/blur — since these components usually ignore a value set directly.'],
+          ['`file`', 'Builds a real `File` from a [File Template](#file-templates) and assigns it to `input.files` via a synthetic `DataTransfer` (the only way to set a file input programmatically) — see [Generating a file](#file-generator-kind).'],
           ['everything else (`text`, `number`, `email`, `date`, `textarea`, …)', 'Calls the native property setter for `value` (bypassing frameworks that override it) and dispatches `input`/`change` — this is what makes React/Angular-style controlled inputs actually observe the change, the same way a plain assignment would not.'],
         ],
       ),
@@ -319,7 +321,7 @@ export const DOC_SECTIONS: DocSection[] = [
         '**Credit card pair** — `creditCardNumber` and `creditCardCvc` share one brand, so you never get e.g. a Visa number with a 4-digit Amex-style CVC. `creditCardExpiry` isn\'t part of this — an expiry date has nothing to do with the brand.',
       ]),
       p(
-        'This sharing resets on every run — click **Run** again and you get a fresh, but still internally consistent, identity/address/card.',
+        'This shared identity is scoped to the script\'s **Flow**, not just the one run — see [What a Flow is](#flows-overview). Re-running the same script (or running a different script in the same Flow) reuses the same identity/address/card instead of picking a new one each time, so a name generated on one page still matches on another. Use **Reset flow** to clear it and get a fresh one.',
       ),
     ],
   },
@@ -332,11 +334,12 @@ export const DOC_SECTIONS: DocSection[] = [
         'When a built-in generator and a fixed value aren\'t enough, write your own. A custom generator is the **body** of a function — you don\'t write `function(...) { ... }` yourself, just the statements, ending in a `return`:',
       ),
       code('return helpers.cpf();', 'js'),
-      p('Three things are already in scope, with no import needed:'),
+      p('Four things are already in scope, with no import needed:'),
       list([
         '**`helpers`** — every built-in generator, callable directly, e.g. `helpers.cpf()`, `helpers.integer({ min: 1, max: 10 })`, `helpers.fullName({ locale: "us" })`. Same ids and options as the [built-in generators table](#builtin-generators).',
         '**`options`** — this specific field\'s configured values, matching whatever `optionsSchema` you declared for this generator (see [Generator options](#generator-options)). A key with no matching schema entry, or no `optionsSchema` declared at all, means `options` is just `{}`.',
         '**`fields`** — every value already filled earlier in this same script run, keyed by that field\'s label, camelCased (see [Referencing other fields](#fields-object)).',
+        '**`flowVars`** — every named flow variable published so far in this script\'s Flow, keyed by the exact string it was saved under, including ones published by an earlier script on a different page (see [Named flow variables](#flow-variables)).',
       ]),
       code('return fields.firstName + "." + fields.lastName + "@example.com";', 'js'),
       p('The function must `return` a string, number, or boolean — returning anything else (an object, `undefined`, a Promise) throws an error that shows up right in the field\'s preview.'),
@@ -462,6 +465,145 @@ return prefix + "_" + n;`,
     ],
   },
 
+  // ── Flows & generated files ─────────────────────────────────────────
+  {
+    id: 'flows-overview',
+    title: 'What a Flow is',
+    category: 'Flows & generated files',
+    blocks: [
+      p(
+        'Every script belongs to exactly one **Flow** (`FormScript.flowId`) — a lightweight named container (`{ id, name, description?, createdAt, updatedAt }`) with no pre-declared list of fields or variables. A standalone one-off script still gets its own, single-script Flow automatically; you never have to think about Flows at all unless you actually need two scripts to share something.',
+      ),
+      p(
+        'The motivating case: page 1 of a multi-step process asks for a name; page 2 — a different form entirely — asks for an uploaded document with that same name printed on it, or just asks for the same email again. Putting both scripts in the same Flow is what makes that possible, without configuring field-by-field mappings by hand.',
+      ),
+      p('A Flow enables two independent kinds of sharing between scripts, covered in the next two sections:'),
+      list([
+        '**Automatic identity correlation** — name/email/address/credit card, zero configuration. See [Correlated generators](#shared-identity).',
+        '**Named flow variables** — an explicit, opt-in `key` → value you choose per field. See [Named flow variables](#flow-variables).',
+      ]),
+      p(
+        'In the script editor, a "Flow" block at the top of the page lets you rename the current Flow, switch to a different existing one, or start a new one ("+ New flow…") from a searchable dropdown — moving a script to another Flow later is just picking a different entry there. If the Flow has more than one script, the block also lists its sibling scripts (with an "Open" link to jump straight to one) and a collapsible "Flow variables" panel.',
+      ),
+      p(
+        'In the script list, each Flow is a folder holding its scripts — click it to collapse, and use the download icon on its row to [export the whole Flow](#flow-export-import) as one file.',
+      ),
+      warning(
+        'Switching a script to a different Flow does not delete its old one, even if it was that Flow\'s only script — an orphaned Flow like that is only cleaned up automatically when its last script is actually **deleted**, not when it\'s reassigned.',
+      ),
+    ],
+  },
+  {
+    id: 'flow-variables',
+    title: 'Named flow variables',
+    category: 'Flows & generated files',
+    blocks: [
+      p(
+        'Any field can publish its resolved value under a free-text key via "Save as flow variable", right below its generator picker — this sets `field.options.saveAsFlowVariable = { key }` (see [Field step shape](#json-field-step)). The value is written the moment that field finishes filling, so anything later in the same run — and any later run of any script in the same Flow — can read it back.',
+      ),
+      p('There are three places a published variable can be read:'),
+      table(
+        ['Where', 'How', 'Missing key behaves as'],
+        [
+          ['**Fixed value**', 'A `{{key}}` placeholder anywhere in the value — `Hello {{fullName}}` fills "Hello Ada Lovelace". Non-string fixed values (numbers, booleans) pass through untouched.', 'The field errors out.'],
+          ['**Custom generator**', 'A `flowVars` object in scope alongside `helpers`/`options`/`fields` — `return flowVars.fullName;`.', '`undefined`, like `fields` — guard it yourself.'],
+          ['**File Template**', 'A text layer with a `flowVariable` source, or a `{{key}}` inside a `literal` layer or in `outputFilename` — see [File Templates](#file-templates).', 'The field errors out.'],
+        ],
+      ),
+      code('return "REF-" + String(flowVars.email || "").split("@")[0].toUpperCase();', 'js'),
+      p(
+        '**`flowVars` vs. `fields`** — both let a generator read another value, and they are not interchangeable: `fields` is scoped to *this run of this script* and keyed by a field\'s camelCased label (see [The `fields` object](#fields-object)), while `flowVars` is scoped to the whole *Flow*, keyed by whatever string you typed, and survives across pages and runs until the Flow is reset. Reach for `fields` within one page, `flowVars` across pages.',
+      ),
+      p(
+        'The key is plain free text with no schema behind it, so the field publishing it and whatever consumes it have to agree on spelling by convention. Three guardrails help: the "Save as flow variable" key input autocompletes from every key already used in the same Flow; the script editor\'s "Flow variables" panel lists every key the Flow declares — including ones **not filled yet** — with each published value and how long ago it landed, refreshing on its own as soon as a run finishes; and a File Template text layer bound to a key nobody publishes shows a non-blocking "No field currently saves this key" warning while authoring.',
+      ),
+      p(
+        'When a read finds nothing published, the field fails with a clear message — "Flow variable \\"…\\" is not set yet — run the script that saves it first" — visible in the script editor\'s preview and in the popup\'s expandable run result, never as a silently empty value.',
+      ),
+      warning(
+        'Because `{{…}}` is a placeholder in a **fixed value** (and in a File Template\'s literal layers and `outputFilename`), text that needs a literal `{{` — rare, but e.g. filling a form with template syntax in it — will fail instead of being used verbatim. Use a custom generator returning the literal string in that case.',
+      ),
+    ],
+  },
+  {
+    id: 'file-templates',
+    title: 'File Templates (PNG/PDF)',
+    category: 'Flows & generated files',
+    blocks: [
+      p(
+        'A **File Template** is a reusable, global definition of a generated file — global in the sense that it isn\'t scoped to one Flow, so the same template (e.g. "ID document") can be used by any Flow that publishes the flow variables it expects. Each one has a `format` of `png` or `pdf`, a background, and zero or more text layers.',
+      ),
+      table(
+        ['Format', 'Background options', 'Rendered with'],
+        [
+          ['`png`', 'Solid color, or an uploaded image (auto-downscaled if either side is over ~2000px, to stay well under `storage.local`\'s per-item quota)', 'A real `<canvas>` — `fillRect`/`drawImage` for the background, `fillText` per layer, `canvas.toBlob(\'image/png\')` for the output `File`.'],
+          ['`pdf`', 'A blank page, or an uploaded base PDF', '`pdf-lib`, loaded lazily via dynamic `import()` the first time a `pdf` template actually renders — never bundled into the content script otherwise.'],
+        ],
+      ),
+      p(
+        'Each text layer positions one string at `x`/`y` with a font size, weight, color, and alignment (and, for `pdf` templates with more than one page, a `pageIndex`). A layer\'s text comes from one of two sources:',
+      ),
+      list([
+        '`{ kind: "flowVariable", key: "…" }` — one whole layer, one flow variable, resolved against the running script\'s Flow at render time (see [Named flow variables](#flow-variables)); errors clearly if nothing has published that key yet.',
+        '`{ kind: "literal", value: "…" }` — a fixed string, which may also splice variables in with `{{key}}`: `Nome: {{nome}} {{sobrenome}}`. This is the only way to get more than one value onto a single line, since a `flowVariable` source carries exactly one.',
+      ]),
+      p(
+        '`outputFilename` accepts the same `{{key}}` placeholders — e.g. `comprovante-{{nome}}-{{sobrenome}}.png`.',
+      ),
+      tip(
+        'Text does not wrap or shrink to fit on its own — a line longer than the canvas is simply clipped at the edge. Set a layer\'s **Max width** to have the renderer squeeze that line into the space you give it instead.',
+      ),
+      p(
+        'The template editor shows a live canvas preview for `png` templates as you edit. `pdf` templates skip a thumbnail (not worth the render cost on every keystroke) in favor of an "Open preview" button that renders a real PDF — through the same `pdf-lib` path a real fill uses — against a throwaway scratch Flow where every referenced key is seeded with its own `{{key}}` placeholder, and opens it in a new tab.',
+      ),
+    ],
+  },
+  {
+    id: 'file-generator-kind',
+    title: 'Generating a file',
+    category: 'Flows & generated files',
+    blocks: [
+      p(
+        'A field with `elementType: "file"` (an `<input type="file">`, detected automatically by the picker) only ever uses the `"file"` generator kind — `{ kind: "file", templateId: "<a File Template id>" }`. Every other generator kind is hidden from that field\'s picker entirely, since none of them can produce a `File`; the picker instead goes straight to a searchable list of your File Templates, with a "+ New template…" entry that opens the template editor and assigns the result back to this field once you save it.',
+      ),
+      p(
+        'At fill time this renders in the content script — never inside the custom-generator sandbox, which has no Canvas/DOM and can only return a string, number, or boolean — and assigns the resulting `File` to the input via a synthetic `DataTransfer` (`input.files` has no public setter; this is the only way to assign it programmatically). Rendering gets its own 8-second timeout, separate from the custom-generator sandbox\'s own watchdog, since it runs as real DOM/WASM code rather than inside that VM.',
+      ),
+      warning(
+        'Some sites reject a non-trusted `change` event on a file input outright — the same limitation every other synthetic fill in this extension already has, not something specific to generated files.',
+      ),
+    ],
+  },
+
+  {
+    id: 'flow-export-import',
+    title: 'Exporting and importing a Flow',
+    category: 'Flows & generated files',
+    blocks: [
+      p(
+        'A script on its own is no longer a complete thing to hand around: it names a Flow, and its file fields name a File Template — both records that live outside the script. Exporting just the script leaves both references dangling wherever it lands. **Export flow** packages the whole thing instead.',
+      ),
+      p('Hover a Flow\'s folder in the script list and click the download icon. The file you get contains:'),
+      list([
+        'the **Flow** record itself (name, description),',
+        '**every script** in that Flow,',
+        'and **only the File Templates those scripts actually reference** — a template nothing points at isn\'t dragged along.',
+      ]),
+      p(
+        'Importing takes either shape. The same **Import** button in the script list accepts a single script (exactly as before) or a whole flow, and tells you which it found before you commit — `Valid — flow "Signup" (3 scripts, 2 file templates)`.',
+      ),
+      warning(
+        'A File Template is **global** — several Flows can share one. So an import never overwrites a template that already exists locally: if the content is identical it just reuses yours, and if it differs the imported one comes in under a new id named "… (imported)", with the bundle\'s fields repointed at it. A Flow you import can never change the documents another Flow generates.',
+      ),
+      p(
+        'Importing a Flow whose id already exists asks first, and lists which scripts get overwritten. What it does **not** touch is that Flow\'s runtime state: published [flow variables](#flow-variables) and the correlated identity are deliberately left out of the file (they\'re generated data, not definition) and left alone on import — so the first run after an import may still read values from before it. Use **Reset flow** for a clean start.',
+      ),
+      tip(
+        'Export reads the **last saved** state, since the folder lists what\'s saved. If you\'ve just edited a script or the Flow name, hit Save before exporting.',
+      ),
+    ],
+  },
+
   // ── JSON reference ───────────────────────────────────────────────────
   {
     id: 'json-script',
@@ -475,6 +617,7 @@ return prefix + "_" + n;`,
   "id": "…",
   "name": "Signup form",
   "description": "optional",
+  "flowId": "…",
   "urlPatterns": ["*://example.com/signup*"],
   "steps": [ /* field | delay | waitFor, see below */ ],
   "customGenerators": [ /* see Custom generator shape */ ],
@@ -484,14 +627,53 @@ return prefix + "_" + n;`,
         'json',
       ),
       p(
+        'Every script belongs to exactly one **Flow** — see [What a Flow is](#flows-overview) — even a standalone one-off script gets its own, single-script Flow automatically. `flowId` just needs to be a stable, non-empty string; the app creates the Flow record itself the first time the script is saved.',
+      ),
+      p(
         '`urlPatterns` uses the WebExtension match-pattern syntax (`scheme://host/path`, `*` wildcards, `<all_urls>`), plus one Formaster-specific extension: an optional trailing `#fragment`, matched against the URL\'s hash — for targeting one route of a hash-based single-page app (e.g. `*://host/app*#/checkout*`) without matching every other route under the same path.',
       ),
       tip(
         'Writing JSON to **import** specifically (not to paste into an already-open script\'s JSON panel)? You can leave `id` out entirely — the import dialog assigns a fresh one automatically if it\'s missing or not a string. Every other field shown above is still required.',
       ),
+      p(
+        'This shape is one script. To move a script that shares a Flow with others — or whose fields generate files from a template — export the Flow instead: see [Flow bundle shape](#json-flow-bundle).',
+      ),
       warning(
         'Every field must have at least one selector, and every selector\'s `value` must be a **non-empty** string. The app enforces this everywhere a script gets written — the form, the JSON panel, and Import all reject a blank selector value with a clear error instead of saving it. That guard exists because storage has no partial-validation: a script that somehow did end up saved with a blank selector would fail schema validation as a **whole** and be silently dropped from the list on next load, not just that one field. So if you\'re constructing JSON outside the app (to import later), never leave a selector value blank — use an obvious placeholder like `#change-me` instead.',
       ),
+    ],
+  },
+  {
+    id: 'json-flow-bundle',
+    title: 'Flow bundle shape',
+    category: 'JSON reference',
+    blocks: [
+      p('What **Export flow** writes, and what Import accepts alongside a single script (see [Exporting and importing a Flow](#flow-export-import)):'),
+      code(
+        `{
+  "kind": "formaster-flow",
+  "schemaVersion": 1,
+  "flow": { /* see Flow, below */ },
+  "scripts": [ /* one or more scripts, same shape as a single export */ ],
+  "fileTemplates": [ /* only the templates those scripts reference */ ]
+}`,
+        'json',
+      ),
+      p(
+        '`kind` is what tells Import this is a flow rather than one script. On the scripts inside a bundle, **`flowId` may be omitted** — the bundle already names its Flow once. If you do include it, it has to match `flow.id`; a mismatch is rejected rather than silently reassigning the script to another Flow.',
+      ),
+      code(
+        `{
+  "schemaVersion": 1,
+  "id": "…",
+  "name": "Signup",
+  "description": "optional",
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:00:00.000Z"
+}`,
+        'json',
+      ),
+      tip('A bundle must carry at least one script — a Flow with none has nothing to show in the list and would be cleaned up on the next delete anyway.'),
     ],
   },
   {
@@ -520,26 +702,28 @@ return prefix + "_" + n;`,
     "selectors": [ /* one or more selector candidates */ ],
     "elementType": "radio",
     "generator": { "kind": "fixed", "value": "pro" },
-    "options": { "radioValue": "pro", "skip": false }
+    "options": { "radioValue": "pro", "skip": false, "saveAsFlowVariable": { "key": "planTier" } }
   }
 }`,
         'json',
       ),
-      p('`generator` is one of three shapes, discriminated by `kind`:'),
+      p('`generator` is one of four shapes, discriminated by `kind`:'),
       table(
         ['`kind`', 'Shape'],
         [
           ['`"builtin"`', '`{ kind: "builtin", id: <BuiltinGeneratorId>, options?: {...} }` — see [Built-in generators](#builtin-generators).'],
           ['`"fixed"`', '`{ kind: "fixed", value: string | number | boolean }`.'],
           ['`"custom"`', '`{ kind: "custom", generatorId: "<a customGenerators[].id>", options?: {...} }`.'],
+          ['`"file"`', '`{ kind: "file", templateId: "<a File Template id>" }` — only valid for `elementType: "file"`; see [Generating a file](#file-generator-kind).'],
         ],
       ),
       p(
-        '`field.options` is optional, and both of its keys currently have **no dedicated UI control** — set them from the JSON side panel (or a hand-written import file):',
+        '`field.options` is optional, and none of its keys currently have a dedicated UI control in the field row itself — `radioValue`/`skip` are set from the JSON side panel (or a hand-written import file), while `saveAsFlowVariable` has its own "Save as flow variable" toggle right below the generator picker:',
       ),
       list([
         '`radioValue` — for `elementType: "radio"` fields, which `value` attribute in the radio group to check. If omitted, the generated/fixed value itself is used, so most radio fields don\'t need this at all.',
         '`skip` — when `true`, the fill sequence passes over this field entirely (it\'s also excluded from `fields`, see [Ordering and availability rules](#fields-ordering)) without removing it from the script.',
+        '`saveAsFlowVariable` — `{ key: string }`. Publishes this field\'s resolved value under `key` for the rest of this Flow to read — see [Named flow variables](#flow-variables).',
       ]),
     ],
   },
@@ -590,6 +774,7 @@ return prefix + "_" + n;`,
   "schemaVersion": 1,
   "id": "b6b6f2f0-0000-4000-8000-000000000001",
   "name": "Minimal example",
+  "flowId": "b6b6f2f0-0000-4000-8000-000000000099",
   "urlPatterns": ["*://example.com/signup*"],
   "steps": [
     { "type": "delay", "id": "d1", "delayMs": 300 },
@@ -698,6 +883,8 @@ return prefix + "_" + n;`,
         '**`options` is always `{}` in my custom generator.** You need to declare `optionsSchema` for that generator first (see [Generator options](#generator-options)) — without it, there\'s nothing for a field to configure, so `options` stays empty.',
         '**One specific `options.<key>` is `undefined` even though I gave it a `default`.** The declared `default` only seeds what the field\'s control shows on screen — it\'s never auto-filled into `options` at run time. If that particular control was never touched, the key is simply missing. Always code your own fallback (`options.digits || 4`), never assume an absent key means the declared default.',
         '**A radio field checks the wrong option.** Set `field.options.radioValue` to the exact `value` attribute of the option you want checked — there\'s no UI control for this yet, only the JSON panel. See [Field step shape](#json-field-step).',
+        '**"N of M filled" in the popup, and M is bigger than N.** Click that text — when it shows fewer filled than total, it becomes a small expandable list naming which field failed and why (element not found, or a generator/render error message). A missing flow variable ("run the script that saves it first") is the most common one in a multi-script Flow — see [Named flow variables](#flow-variables).',
+        '**Re-running a script gives the same name/email as last time, not a fresh one.** Expected since identity correlation now persists per Flow instead of resetting every run — see [Correlated generators](#shared-identity). Use **Reset flow** (in the script editor\'s Flow panel, or next to a script in the popup once its Flow has more than one script) to clear it.',
       ]),
     ],
   },
@@ -710,10 +897,10 @@ return prefix + "_" + n;`,
         'Custom generator code runs inside QuickJS — a real interpreted JavaScript engine compiled to WebAssembly — not `eval`/`new Function`. That gives it genuine isolation, at the cost of a few hard limits:',
       ),
       list([
-        'No access to the page, the DOM, `fetch`/`XMLHttpRequest`, `browser.*` APIs, cookies, or storage of any kind. The only inputs are `helpers`, `options`, and `fields`.',
+        'No access to the page, the DOM, `fetch`/`XMLHttpRequest`, `browser.*` APIs, cookies, or storage of any kind. The only inputs are `helpers`, `options`, `fields`, and `flowVars` — note that `flowVars` is a plain snapshot resolved *outside* the sandbox and handed in as data, not a live storage handle: writing to it does nothing, and publishing a variable is only ever done by a field\'s "Save as flow variable" option.',
         'A **3-second** execution timeout — code that runs long (an accidental infinite loop, a huge computation) is forcibly interrupted and the field is reported as an error rather than hanging the fill.',
         'The return value must be a plain `string`, `number`, or `boolean`. Returning an object, array, `undefined`, or a `Promise` throws — generators are synchronous, single-value producers by design.',
-        'No arbitrary shared state between fields: two custom generators can\'t communicate through some variable of their own. The only two channels are `fields` (one reading a value an earlier one already produced) and, indirectly, calling the same correlated `helpers.*` function that other fields also call — e.g. two different custom generators both calling `helpers.email()` still get the same shared identity as each other and as any built-in `email`/`firstName`/… field on the same run (see [Correlated generators](#shared-identity)).',
+        'No arbitrary shared state between fields: two custom generators can\'t communicate through some variable of their own. The channels are `fields` (one reading a value an earlier one already produced), `flowVars` (a value some field explicitly published for the whole Flow — see [Named flow variables](#flow-variables)), and, indirectly, calling the same correlated `helpers.*` function that other fields also call — e.g. two different custom generators both calling `helpers.email()` still get the same shared identity as each other and as any built-in `email`/`firstName`/… field on the same run (see [Correlated generators](#shared-identity)).',
       ]),
       p(
         'This works identically across every supported browser (Chrome, Brave, Opera, Firefox) with no per-browser special-casing, because WebAssembly compilation is covered by the standard `wasm-unsafe-eval` CSP directive — unlike `eval`, which Chrome always blocks for extensions and modern Firefox blocks outside a sandboxed page it doesn\'t even support.',

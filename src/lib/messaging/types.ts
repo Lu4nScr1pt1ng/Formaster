@@ -17,6 +17,15 @@ export type RuntimeMessage =
   | { type: 'fill/run'; script: FormScript }
   | { type: 'fill/result'; results: FillFieldResult[] }
   | { type: 'scripts/refresh'; scriptId: string }
+  | { type: 'flows/refresh'; flowId: string }
+  | { type: 'fileTemplates/refresh'; templateId: string }
+  // Content scripts are bundled as a single non-module file with no real
+  // code-splitting, so a direct `import('pdf-lib')` there would inline the
+  // whole library into every page's content script whether or not that page
+  // ever uses a PDF template. The background service worker *is* a real ES
+  // module and code-splits fine — see file-generators/index.ts and
+  // background.ts's handler for this message.
+  | { type: 'fileTemplate/renderPdf'; templateId: string; flowId: string }
   // Sent by the "Fill this field" context-menu item's onClicked handler —
   // content.ts fills whatever element its own `contextmenu` listener last
   // saw, since a DOM element itself can't cross the messaging boundary.
@@ -37,6 +46,10 @@ export type RuntimeMessage =
       // so the background's response carries back whatever this call adds to
       // it — content.ts merges that back into its own copy afterwards.
       runContext: GeneratorRunContext;
+      // Named flow variables visible to this run, resolved by the caller
+      // (which has the flowId and storage access) rather than looked up in
+      // the sandbox — QuickJS has no storage, and no async, to do it itself.
+      flowVars: Record<string, string>;
     };
 
 export interface CustomGeneratorRunResult {

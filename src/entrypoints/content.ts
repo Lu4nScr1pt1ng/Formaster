@@ -53,7 +53,7 @@ export default defineContentScript({
     }
 
     async function runFillScript(script: FormScript) {
-      const results = await fillScript(script, async (generatorId, options, activeScript, context, generatorRunContext) => {
+      const results = await fillScript(script, async (generatorId, options, activeScript, context, generatorRunContext, flowVars) => {
         const generator = activeScript.customGenerators.find((entry) => entry.id === generatorId);
         if (!generator) throw new Error(`Custom generator "${generatorId}" not found`);
         // Delegated to the background script rather than run here: the QuickJS
@@ -66,6 +66,7 @@ export default defineContentScript({
           options,
           fields: context,
           runContext: generatorRunContext,
+          flowVars,
         } satisfies RuntimeMessage)) as CustomGeneratorRunResult;
         // The background ran on a structured-cloned *copy* of generatorRunContext
         // (e.g. a correlated cep/city/state/neighborhood record a `helpers.*`

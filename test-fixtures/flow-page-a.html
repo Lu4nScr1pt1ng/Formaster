@@ -1,0 +1,26 @@
+<!--
+  Page 1 of the two-page Flow fixture (see flow-page-b.html for page 2).
+
+  Deliberately plain: the interesting behavior under test lives in the
+  extension (named flow variables + the per-Flow correlated identity), not
+  in the page, so this is just a set of stable, individually-addressable
+  inputs a script can target. Kept as a *separate document* from page B —
+  rather than two halves of one page — because that's the whole point: a
+  flow variable has to survive a real navigation between two unrelated
+  forms, which a single-page fixture would never actually prove.
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Flow fixture — page A</title>
+  </head>
+  <body>
+    <h1>Page A</h1>
+    <input id="first-name" type="text" />
+    <input id="last-name" type="text" />
+    <input id="full-name" type="text" />
+    <input id="email" type="email" />
+    <input id="company" type="text" />
+  </body>
+</html>

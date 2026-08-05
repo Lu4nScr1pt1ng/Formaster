@@ -1,0 +1,68 @@
+<!--
+  Page 2 of the two-page Flow fixture (see flow-page-a.html for page 1).
+
+  Holds the *consuming* side: fields whose values come from what page A
+  published (via a `{{key}}` fixed value or a custom generator's `flowVars`),
+  plus the `<input type="file">` a File Template fills.
+
+  On the file input's `change` event — dispatched by `setFileInputValue()`'s
+  synthetic DataTransfer assignment — this decodes the attached file and
+  reports name/type/size (and pixel dimensions for a PNG) into #file-info as
+  JSON, so a test can assert on what actually landed in `input.files[0]`
+  instead of trusting the fill's own return value. Same "fixture
+  self-reports into a result element" approach as
+  conditional-address-form.html.
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Flow fixture — page B</title>
+  </head>
+  <body>
+    <h1>Page B</h1>
+    <input id="greeting" type="text" />
+    <input id="ref-code" type="text" />
+    <input id="first-name" type="text" />
+    <input id="last-name" type="text" />
+    <input id="email" type="email" />
+    <input id="document" type="file" />
+    <pre id="file-info"></pre>
+
+    <script>
+      document.getElementById('document').addEventListener('change', async (event) => {
+        const file = event.currentTarget.files?.[0];
+        if (!file) {
+          document.getElementById('file-info').textContent = JSON.stringify({ attached: false });
+          return;
+        }
+        const info = { attached: true, name: file.name, type: file.type, size: file.size };
+        if (file.type === 'image/png') {
+          try {
+            const bitmap = await createImageBitmap(file);
+            info.width = bitmap.width;
+            info.height = bitmap.height;
+            // Counting non-white pixels is what separates "a PNG was
+            // attached" from "the text layer actually rendered onto it" — a
+            // template whose flow variable silently resolved to an empty
+            // string still produces a perfectly valid, perfectly blank PNG.
+            const canvas = document.createElement('canvas');
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(bitmap, 0, 0);
+            const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let inkPixels = 0;
+            for (let i = 0; i < data.length; i += 4) {
+              if (data[i] < 200 || data[i + 1] < 200 || data[i + 2] < 200) inkPixels++;
+            }
+            info.inkPixels = inkPixels;
+          } catch (error) {
+            info.decodeError = String(error);
+          }
+        }
+        document.getElementById('file-info').textContent = JSON.stringify(info);
+      });
+    </script>
+  </body>
+</html>

@@ -63,13 +63,12 @@ test('picking a field auto-suggests its generator from id/name/placeholder', asy
   await expect(zipCard.locator('button[aria-label="Country"]')).toHaveText('United States');
 });
 
-test('right-click "Fill this field" fills a recognized field on the spot', async ({ context, staticServer }) => {
+test('right-click "Fill this field" fills a recognized field on the spot', async ({ context, serviceWorker, staticServer }) => {
   const page = await context.newPage();
   const url = staticServer.url('stripe-style-checkout.html');
   await page.goto(url);
 
   await page.locator('#email').dispatchEvent('contextmenu');
-  const serviceWorker = context.serviceWorkers()[0];
   await serviceWorker.evaluate(async (targetUrl) => {
     const [tab] = await chrome.tabs.query({ url: targetUrl });
     await chrome.tabs.sendMessage(tab.id!, { type: 'contextmenu/fill-field' });
@@ -78,10 +77,7 @@ test('right-click "Fill this field" fills a recognized field on the spot', async
   await expect(page.locator('#email')).toHaveValue(/^[^@]+@[^@]+\.[^@]+$/);
 });
 
-test('right-click "Fill this field" reports unrecognized fields instead of guessing', async ({
-  context,
-  staticServer,
-}) => {
+test('right-click "Fill this field" reports unrecognized fields instead of guessing', async ({ context, serviceWorker, staticServer }) => {
   const page = await context.newPage();
   const url = staticServer.url('stripe-style-checkout.html');
   await page.goto(url);
@@ -98,7 +94,6 @@ test('right-click "Fill this field" reports unrecognized fields instead of guess
     document.body.appendChild(input);
   });
   await page.locator('#blank-signal-field').dispatchEvent('contextmenu');
-  const serviceWorker = context.serviceWorkers()[0];
   await serviceWorker.evaluate(async (targetUrl) => {
     const [tab] = await chrome.tabs.query({ url: targetUrl });
     await chrome.tabs.sendMessage(tab.id!, { type: 'contextmenu/fill-field' });
@@ -112,13 +107,12 @@ test('right-click "Fill this field" reports unrecognized fields instead of guess
   await expect(page.locator('#blank-signal-field')).toHaveValue('');
 });
 
-test('right-click "Fill this field" recognizes a country combobox from its label', async ({ context, staticServer }) => {
+test('right-click "Fill this field" recognizes a country combobox from its label', async ({ context, serviceWorker, staticServer }) => {
   const page = await context.newPage();
   const url = staticServer.url('stripe-style-checkout.html');
   await page.goto(url);
 
   await page.locator('#country-search').dispatchEvent('contextmenu');
-  const serviceWorker = context.serviceWorkers()[0];
   await serviceWorker.evaluate(async (targetUrl) => {
     const [tab] = await chrome.tabs.query({ url: targetUrl });
     await chrome.tabs.sendMessage(tab.id!, { type: 'contextmenu/fill-field' });
@@ -136,13 +130,12 @@ test('right-click "Fill this field" recognizes a country combobox from its label
  * (src/lib/picker/context-menu-fill.ts) specifically so this still works on
  * its own demo form. This is the regression test for that.
  */
-test('right-click "Fill this field" also works on the Playground\'s own demo form', async ({ context, extensionId }) => {
+test('right-click "Fill this field" also works on the Playground\'s own demo form', async ({ context, extensionId, serviceWorker }) => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/playground.html`);
   await page.locator('text=Playground form').waitFor();
 
   await page.locator('#pg-first-name').dispatchEvent('contextmenu');
-  const serviceWorker = context.serviceWorkers()[0];
   await serviceWorker.evaluate(async () => {
     const [tab] = await chrome.tabs.query({ url: 'chrome-extension://*/playground.html*' });
     await chrome.tabs.sendMessage(tab.id!, { type: 'contextmenu/fill-field' });

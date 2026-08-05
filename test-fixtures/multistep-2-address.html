@@ -1,0 +1,41 @@
+<!--
+  Step 2 of 3 of the multi-step Flow fixture (see multistep-1-identity.html).
+
+  Collects the address. The individual fields are filled by Formaster's
+  correlated BR address generators (CEP/city/state agree with each other),
+  and the last field — "Full address" — is composed by a custom generator
+  reading the ones above it via `fields`, then published to the Flow as a
+  named variable. That combination is the point of this step: it exercises
+  `fields` (within one script) feeding `flowVars` (across steps), which is
+  exactly how a composed value reaches step 3's documents.
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Signup — Step 2 of 3: Address</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 2rem auto; padding: 0 1rem; }
+      .steps { display: flex; gap: 0.5rem; font-size: 0.8rem; color: #888; margin-bottom: 1.5rem; }
+      .steps b { color: #111; }
+      label { display: block; margin-bottom: 0.85rem; font-size: 0.9rem; }
+      input { display: block; width: 100%; padding: 0.4rem; margin-top: 0.2rem; font-size: 1rem; }
+      a { display: inline-block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <p class="steps">1. Identity › <b>2. Address</b> › 3. Documents</p>
+    <h1>Step 2 — Address</h1>
+
+    <form id="address-form">
+      <label>CEP <input id="cep" name="cep" type="text" /></label>
+      <label>Street <input id="street" name="street" type="text" /></label>
+      <label>Number <input id="number" name="number" type="text" /></label>
+      <label>City <input id="city" name="city" type="text" /></label>
+      <label>State <input id="state" name="state" type="text" /></label>
+      <label>Full address <input id="full-address" name="full-address" type="text" /></label>
+    </form>
+
+    <a id="next" href="multistep-3-documents.html">Continue to documents →</a>
+  </body>
+</html>

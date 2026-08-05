@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { browser } from 'wxt/browser';
   import BracketsCurlyIcon from 'phosphor-svelte/lib/BracketsCurlyIcon';
+  import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon';
   import CheckIcon from 'phosphor-svelte/lib/CheckIcon';
   import CopySimpleIcon from 'phosphor-svelte/lib/CopySimpleIcon';
   import CursorClickIcon from 'phosphor-svelte/lib/CursorClickIcon';
@@ -17,14 +19,21 @@
   import CustomGeneratorCard from './CustomGeneratorCard.svelte';
   import DelayStepRow from './DelayStepRow.svelte';
   import FieldRow from './FieldRow.svelte';
+  import FileTemplateEditor from './FileTemplateEditor.svelte';
+  import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
   import WaitForStepRow from './WaitForStepRow.svelte';
   import { createConfirmGate } from '../lib/confirm-gate.svelte';
   import { createFlashTimer } from '../lib/flash-timer';
   import { focusWindowIfSupported } from '../lib/focus-window';
-  import { fieldContextKey, type FieldValueContext } from '../lib/filler/fill-script';
+  import { fieldContextKey, type FieldValueContext, type FlowVariables } from '../lib/filler/fill-script';
+  import { collectSavedFlowVariableKeys } from '../lib/flow-variable-keys';
+  import { interpolateFlowVariables } from '../lib/flow-variables';
   import { runBuiltinGenerator, type GeneratorRunContext } from '../lib/generators';
+  import { renderFile } from '../lib/generators/file-generators';
   import { runCustomCode } from '../lib/generators/quickjs-runner';
   import type { RuntimeMessage } from '../lib/messaging/types';
+  import { createEmptyFileTemplate, type FileTemplate } from '../lib/schema/file-template';
+  import { createEmptyFlow, type Flow } from '../lib/schema/flow';
   import {
     formScriptSchema,
     formatValidationError,
@@ -37,7 +46,12 @@
     type ScriptStep,
     type WaitForStep,
   } from '../lib/schema/script';
+  import { deleteFileTemplate, listFileTemplates, saveFileTemplate } from '../lib/storage/file-templates-store';
+  import { resetFlowIdentity } from '../lib/storage/flow-identity-store';
+  import { getFlowVariables, listFlowValues, resetFlowValues } from '../lib/storage/flow-values-store';
+  import { getFlow, listFlows, saveFlow } from '../lib/storage/flows-store';
   import { getReturnTabId } from '../lib/storage/return-tab-store';
+  import { listScripts } from '../lib/storage/scripts-store';
   import { pushToast } from '../lib/toast/toast-store.svelte';
 
   interface Props {
@@ -48,9 +62,15 @@
     onDuplicate: (script: FormScript) => void;
     /** Off in the Playground: there's no real tab to reopen the picker on, so the button can't do anything there. */
     showAddFieldsFromPage?: boolean;
+    /**
+     * Reports unsaved edits that the surrounding UI shows too — the script's
+     * name, and which Flow it sits in — so a sidebar can follow along as the
+     * user types instead of only catching up on Save.
+     */
+    onDraftChange?: (draft: { id: string; name: string; flowId: string; flowName: string }) => void;
   }
 
-  let { script, onSave, onDelete, onExport, onDuplicate, showAddFieldsFromPage = true }: Props = $props();
+  let { script, onSave, onDelete, onExport, onDuplicate, showAddFieldsFromPage = true, onDraftChange }: Props = $props();
 
   // Local editable copy so navigating away without saving doesn't mutate storage.
   // `script` is itself a reactive $state proxy; $state.snapshot() resolves it to an
@@ -80,6 +100,205 @@
   const saveFlashTimer = createFlashTimer(() => (saveFlash = false));
   let justAddedFieldId = $state<string | null>(null);
   const deleteScriptGate = createConfirmGate();
+
+  const NEW_FLOW_VALUE = '__new_flow__';
+
+  // `flow` starts null only for the brief window before `loadFlowContext()`
+  // resolves (this component remounts fresh per script — see the `{#key}` in
+  // options/App.svelte and playground/App.svelte — so there's no stale state
+  // to worry about). `null` here means "not loaded yet", not "no Flow".
+  let flow = $state<Flow | null>(null);
+  let allFlows = $state<Flow[]>([]);
+  let allScripts = $state<FormScript[]>([]);
+  let fileTemplates = $state<FileTemplate[]>([]);
+  let flowValues = $state<Record<string, { value: string; updatedAt: string }>>({});
+  let flowVariablesPanelOpen = $state(false);
+  const resetFlowGate = createConfirmGate();
+
+  // Which field to assign a newly-created template back to (set only when
+  // the "+ New template" sentinel was picked from inside a specific field's
+  // picker) — null when opened to edit an already-assigned template instead.
+  let editingFileTemplate = $state<FileTemplate | null>(null);
+  let assignTemplateToFieldIndex = $state<number | null>(null);
+
+  const siblingScripts = $derived(allScripts.filter((script) => script.flowId === draft.flowId && script.id !== draft.id));
+  const flowOptions = $derived.by<SearchableSelectOption[]>(() => {
+    // Narrowed into a local first — same reason as `selectedCustomGeneratorFields`
+    // above: TS can't carry `flow`'s null-narrowing through the `.some()` closure.
+    const currentFlow = flow;
+    const flows = currentFlow && !allFlows.some((entry) => entry.id === currentFlow.id) ? [currentFlow, ...allFlows] : allFlows;
+    return [...flows.map((entry) => ({ value: entry.id, label: entry.name })), { value: NEW_FLOW_VALUE, label: '+ New flow…' }];
+  });
+  // Every script but this one contributes its *stored* fields; this one
+  // contributes its live `draft` instead, so a key just marked in an
+  // unsaved edit shows up immediately as a suggestion/orphan-resolution.
+  const scriptsForKeyScan = $derived([...allScripts.filter((script) => script.id !== draft.id), draft]);
+  const flowVariableKeys = $derived(collectSavedFlowVariableKeys(scriptsForKeyScan, draft.flowId));
+  const allPublishedFlowVariableKeys = $derived(collectSavedFlowVariableKeys(scriptsForKeyScan));
+  // Not gated on having sibling scripts: a single script can publish a
+  // variable in one field and read it back (via `{{key}}` or `flowVars.key`)
+  // in a later one, so hiding the panel there would hide real state.
+  const showFlowVariablesPanel = $derived(
+    siblingScripts.length > 0 || flowVariableKeys.length > 0 || Object.keys(flowValues).length > 0,
+  );
+
+  /**
+   * One row per key this Flow either *declares* (some field saves it) or has
+   * actually *published* (a run wrote a value). Showing declared-but-empty
+   * keys is the point: it's how "this variable exists but nothing has filled
+   * it yet" becomes visible before a run rather than as an error during one.
+   */
+  const flowVariableRows = $derived(
+    [...new Set([...flowVariableKeys, ...Object.keys(flowValues)])].sort().map((key) => ({
+      key,
+      entry: flowValues[key],
+    })),
+  );
+
+  onMount(() => {
+    function handleMessage(message: RuntimeMessage): void {
+      if (message.type === 'scripts/refresh') void refreshScripts();
+      else if (message.type === 'flows/refresh') void refreshFlows();
+      else if (message.type === 'fileTemplates/refresh') void refreshFileTemplates();
+      // A fill run just finished somewhere (any tab, popup Run, context
+      // menu) — whatever it published lands in storage before this fires,
+      // so re-reading here is what makes the panel reflect a run the user
+      // just did on another tab without reopening the editor.
+      else if (message.type === 'fill/result') void refreshFlowValues();
+    }
+    browser.runtime.onMessage.addListener(handleMessage);
+    void loadFlowContext();
+    return () => browser.runtime.onMessage.removeListener(handleMessage);
+  });
+
+  async function loadFlowContext(): Promise<void> {
+    const [loadedFlow, flows, templates, scripts, values] = await Promise.all([
+      getFlow(draft.flowId),
+      listFlows(),
+      listFileTemplates(),
+      listScripts(),
+      listFlowValues(draft.flowId),
+    ]);
+    // No Flow in storage yet: either a brand-new script's draft flowId
+    // (options/App.svelte's createScript()) or a legacy script mid-migration
+    // — either way, an implicit single-script Flow named after the script,
+    // persisted for real the first time this script is actually saved.
+    flow = loadedFlow ?? { ...createEmptyFlow(draft.name), id: draft.flowId };
+    allFlows = flows;
+    fileTemplates = templates;
+    allScripts = scripts;
+    flowValues = values;
+  }
+
+  async function refreshScripts(): Promise<void> {
+    allScripts = await listScripts();
+  }
+
+  async function refreshFlows(): Promise<void> {
+    allFlows = await listFlows();
+  }
+
+  async function refreshFileTemplates(): Promise<void> {
+    fileTemplates = await listFileTemplates();
+  }
+
+  async function refreshFlowValues(): Promise<void> {
+    flowValues = await listFlowValues(draft.flowId);
+  }
+
+  // Mirrors the three draft fields the sidebar renders. Reads them
+  // explicitly (rather than passing `draft` wholesale) so this only fires
+  // on the edits that actually change what's shown out there, not on every
+  // keystroke inside a field or generator.
+  $effect(() => {
+    onDraftChange?.({
+      id: draft.id,
+      name: draft.name,
+      flowId: draft.flowId,
+      flowName: flow?.name ?? draft.name,
+    });
+  });
+
+  function setFlowId(value: string): void {
+    if (value === NEW_FLOW_VALUE) {
+      const newFlow = createEmptyFlow(draft.name);
+      flow = newFlow;
+      allFlows = [...allFlows, newFlow];
+      draft.flowId = newFlow.id;
+      // A brand-new Flow has published nothing yet — clear rather than
+      // leave the previous Flow's values on screen under a new name.
+      flowValues = {};
+      return;
+    }
+    const selected = allFlows.find((entry) => entry.id === value);
+    if (!selected) return;
+    flow = selected;
+    draft.flowId = selected.id;
+    void refreshFlowValues();
+  }
+
+  function updateFlowName(name: string): void {
+    if (flow) flow = { ...flow, name };
+  }
+
+  function updateFlowDescription(description: string): void {
+    if (flow) flow = { ...flow, description };
+  }
+
+  async function resetFlow(): Promise<void> {
+    await resetFlowValues(draft.flowId);
+    await resetFlowIdentity(draft.flowId);
+    flowValues = {};
+    pushToast('Flow reset — shared variables and identity cleared', 'info');
+  }
+
+  function formatRelativeTime(iso: string): string {
+    const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  }
+
+  async function openSiblingScript(id: string): Promise<void> {
+    await browser.tabs.create({ url: browser.runtime.getURL(`/options.html?script=${id}`) });
+  }
+
+  function openCreateFileTemplate(fieldIndex: number): void {
+    editingFileTemplate = createEmptyFileTemplate(`Template ${fileTemplates.length + 1}`, 'png');
+    assignTemplateToFieldIndex = fieldIndex;
+  }
+
+  function openEditFileTemplate(templateId: string): void {
+    const found = fileTemplates.find((entry) => entry.id === templateId);
+    if (!found) return;
+    editingFileTemplate = found;
+    assignTemplateToFieldIndex = null;
+  }
+
+  function closeFileTemplateEditor(): void {
+    editingFileTemplate = null;
+    assignTemplateToFieldIndex = null;
+  }
+
+  async function saveFileTemplateFromEditor(template: FileTemplate): Promise<void> {
+    const saved = await saveFileTemplate(template);
+    fileTemplates = [...fileTemplates.filter((entry) => entry.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name));
+    if (assignTemplateToFieldIndex !== null) {
+      const step = draft.steps[assignTemplateToFieldIndex];
+      if (step.type === 'field') updateField(assignTemplateToFieldIndex, { ...step.field, generator: { kind: 'file', templateId: saved.id } });
+    }
+    pushToast(`"${saved.name}" template saved`, 'success');
+    closeFileTemplateEditor();
+  }
+
+  async function deleteFileTemplateFromEditor(id: string): Promise<void> {
+    await deleteFileTemplate(id);
+    fileTemplates = fileTemplates.filter((entry) => entry.id !== id);
+    closeFileTemplateEditor();
+  }
 
   let showJsonView = $state(false);
   let jsonText = $state('');
@@ -265,13 +484,18 @@
     field: FieldMapping,
     context: FieldValueContext,
     generatorRunContext: GeneratorRunContext,
+    flowVars: FlowVariables,
   ): Promise<string | number | boolean> {
     const ref: GeneratorRef = field.generator;
     if (ref.kind === 'builtin') return runBuiltinGenerator(ref.id, ref.options, generatorRunContext);
-    if (ref.kind === 'fixed') return ref.value;
+    if (ref.kind === 'fixed') return typeof ref.value === 'string' ? interpolateFlowVariables(ref.value, flowVars) : ref.value;
+    if (ref.kind === 'file') {
+      const file = await renderFile(ref.templateId, draft.flowId);
+      return `File: ${file.name}`;
+    }
     const generator = draft.customGenerators.find((entry) => entry.id === ref.generatorId);
     if (!generator) throw new Error('No custom generator selected');
-    return runCustomCode(generator.code, ref.options, context, generatorRunContext);
+    return runCustomCode(generator.code, ref.options, context, generatorRunContext, flowVars);
   }
 
   /**
@@ -279,26 +503,44 @@
    * just like a real run — and, via the shared `generatorRunContext`, so
    * correlated builtins (cep/city/state/neighborhood) preview the same
    * underlying address as the fields already previewed above them.
+   *
+   * `flowVars` starts from what the Flow has actually published (so a
+   * preview can read a value an earlier *page* produced) and, like a real
+   * run, picks up anything a field above this one publishes along the way —
+   * without writing any of it back to storage, since a preview must never
+   * change what the next real run sees.
    */
   async function previewGenerator(field: FieldMapping): Promise<string> {
     const index = draft.steps.findIndex((step) => step.type === 'field' && step.field.id === field.id);
     const context: FieldValueContext = {};
     const generatorRunContext: GeneratorRunContext = {};
+    const flowVars: FlowVariables = await getFlowVariables(draft.flowId);
     for (let i = 0; i < index; i++) {
       const step = draft.steps[i];
       if (step.type !== 'field') continue;
       try {
-        context[fieldContextKey(step.field)] = await resolveFieldValue(step.field, context, generatorRunContext);
+        const value = await resolveFieldValue(step.field, context, generatorRunContext, flowVars);
+        context[fieldContextKey(step.field)] = value;
+        const savedKey = step.field.options?.saveAsFlowVariable?.key;
+        if (savedKey) flowVars[savedKey] = String(value);
       } catch {
         // A broken earlier field shouldn't block previewing this one; it's just absent from context.
       }
     }
-    const value = await resolveFieldValue(field, context, generatorRunContext);
+    const value = await resolveFieldValue(field, context, generatorRunContext, flowVars);
     return String(value);
   }
 
   async function save(): Promise<boolean> {
     try {
+      // The Flow this script belongs to may not be persisted yet (a brand
+      // new script, or one that just switched to "+ New flow…") — always
+      // upsert it first so `draft.flowId` never points at nothing in storage.
+      if (flow) {
+        const savedFlow = await saveFlow(flow);
+        flow = savedFlow;
+        if (!allFlows.some((entry) => entry.id === savedFlow.id)) allFlows = [...allFlows, savedFlow];
+      }
       const saved = await onSave($state.snapshot(draft));
       lastSyncedUpdatedAt = saved.updatedAt;
       draft.updatedAt = saved.updatedAt;
@@ -445,6 +687,84 @@
   <div class="grid min-h-0 flex-1 grid-cols-1 {showJsonView ? '@3xl:grid-cols-2' : ''}">
     <div class="min-h-0 space-y-6 overflow-y-auto px-3 py-4 sm:px-6">
       <section>
+        <label class="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-ink-3" for="flow-name">Flow</label>
+        <div class="flex flex-wrap items-center gap-2">
+          <SearchableSelect ariaLabel="Flow" value={draft.flowId} options={flowOptions} onChange={setFlowId} />
+          <input
+            id="flow-name"
+            class="min-w-0 flex-1 rounded-md border border-hair bg-canvas px-2 py-1 text-xs text-ink-1 outline-none focus:border-accent-500"
+            placeholder="Flow name"
+            value={flow?.name ?? ''}
+            oninput={(event) => updateFlowName((event.currentTarget as HTMLInputElement).value)}
+          />
+        </div>
+        <input
+          class="mt-1.5 w-full rounded-md border border-hair bg-canvas px-2 py-1 text-xs text-ink-2 outline-none focus:border-accent-500"
+          placeholder="Flow description (optional)"
+          value={flow?.description ?? ''}
+          oninput={(event) => updateFlowDescription((event.currentTarget as HTMLInputElement).value)}
+        />
+        <p class="mt-1.5 text-[11px] text-ink-3">
+          Scripts in the same flow can share values — e.g. a name typed on this page can appear on a file generated on
+          another page.
+        </p>
+
+        {#if siblingScripts.length > 0}
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            {#each siblingScripts as sibling (sibling.id)}
+              <span class="flex items-center gap-1.5 rounded-md bg-canvas px-2 py-1 text-[11px] text-ink-2">
+                {sibling.name}
+                <button type="button" class="font-medium text-accent-500 hover:underline" onclick={() => openSiblingScript(sibling.id)}>
+                  Open
+                </button>
+              </span>
+            {/each}
+          </div>
+        {/if}
+
+        {#if showFlowVariablesPanel}
+          <button
+            type="button"
+            class="mt-2 flex items-center gap-1 text-[11px] font-medium text-ink-2 transition hover:text-accent-500"
+            onclick={() => (flowVariablesPanelOpen = !flowVariablesPanelOpen)}
+          >
+            <CaretDownIcon size={10} weight="bold" class="transition {flowVariablesPanelOpen ? 'rotate-180' : ''}" />
+            Flow variables ({flowVariableRows.length})
+          </button>
+          {#if flowVariablesPanelOpen}
+            <div class="mt-1.5 space-y-1.5 rounded-lg bg-canvas p-2">
+              {#each flowVariableRows as row (row.key)}
+                <div class="flex items-center justify-between gap-2 text-xs">
+                  <span class="shrink-0 font-mono text-ink-2">{row.key}</span>
+                  {#if row.entry}
+                    <span class="flex min-w-0 items-center gap-2">
+                      <span class="truncate text-ink-1" title={row.entry.value}>{row.entry.value || '(empty)'}</span>
+                      <span class="shrink-0 text-ink-3">{formatRelativeTime(row.entry.updatedAt)}</span>
+                    </span>
+                  {:else}
+                    <span class="shrink-0 text-ink-3">not filled yet</span>
+                  {/if}
+                </div>
+              {:else}
+                <p class="text-xs text-ink-3">No values published yet.</p>
+              {/each}
+              <p class="pt-0.5 text-[10.5px] text-ink-3">
+                Read one back with <code class="font-mono">&#123;&#123;key&#125;&#125;</code> in a fixed value, or
+                <code class="font-mono">flowVars.key</code> in a custom generator.
+              </p>
+              <button
+                type="button"
+                class="mt-1 text-xs font-medium text-red-400 transition hover:underline"
+                onclick={() => resetFlowGate.request(true)}
+              >
+                Reset flow
+              </button>
+            </div>
+          {/if}
+        {/if}
+      </section>
+
+      <section>
         <div class="mb-2 flex flex-wrap items-center justify-between gap-y-1.5">
           <label class="block text-[11px] font-semibold uppercase tracking-wider text-ink-3" for="url-patterns">
             URL patterns (one per line)
@@ -517,6 +837,8 @@
                 <FieldRow
                   field={step.field}
                   customGenerators={draft.customGenerators}
+                  {fileTemplates}
+                  {flowVariableKeys}
                   canMoveUp={index > 0}
                   canMoveDown={index < draft.steps.length - 1}
                   startExpanded={step.field.id === justAddedFieldId}
@@ -528,6 +850,8 @@
                   onPreview={() => previewGenerator(step.field)}
                   onCreateGenerator={() => createAndAssignGenerator(index)}
                   onFocusGenerator={focusGenerator}
+                  onCreateFileTemplate={() => openCreateFileTemplate(index)}
+                  onEditFileTemplate={openEditFileTemplate}
                 />
               {:else if step.type === 'delay'}
                 <DelayStepRow
@@ -623,3 +947,22 @@
   onConfirm={() => deleteScriptGate.confirm(() => onDelete(draft.id))}
   onCancel={deleteScriptGate.cancel}
 />
+
+<ConfirmDialog
+  open={resetFlowGate.open}
+  title="Reset this flow?"
+  message="Every shared variable and the correlated identity (name/email/address/etc.) for this flow will be cleared. Scripts in it will generate fresh values next run."
+  confirmLabel="Reset"
+  onConfirm={() => resetFlowGate.confirm(resetFlow)}
+  onCancel={resetFlowGate.cancel}
+/>
+
+{#if editingFileTemplate}
+  <FileTemplateEditor
+    template={editingFileTemplate}
+    publishedFlowVariableKeys={allPublishedFlowVariableKeys}
+    onSave={saveFileTemplateFromEditor}
+    onDelete={assignTemplateToFieldIndex === null ? deleteFileTemplateFromEditor : undefined}
+    onClose={closeFileTemplateEditor}
+  />
+{/if}

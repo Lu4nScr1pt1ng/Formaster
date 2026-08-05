@@ -39,7 +39,9 @@ same domain can each have their own script, or share one, depending on how
 broad you make the URL pattern. Everything lives in the script library
 (**Open script library**, from the popup or the gear icon), where you can
 edit, duplicate, export/import, or delete scripts, and add or remove fields
-without re-mapping from scratch.
+without re-mapping from scratch. Scripts that belong together — the steps of
+one multi-page signup, say — live in a **flow**, which the library shows as a
+folder and exports or imports as a single file.
 
 If you'd rather try it out before pointing it at a real site, open the
 **Playground** from the script library — a bundled demo page covering every
@@ -87,6 +89,12 @@ field type, wired to a ready-to-run example script, with nothing to set up.
     form, kept in sync live in both directions.
   - Scripts and fields can be duplicated; import accepts a file or pasted
     JSON, validated before it's accepted.
+  - Exporting a flow bundles the flow, every script in it, and the file
+    templates those scripts reference, so a multi-page setup moves in one
+    piece. Import takes either a single script or a whole flow. A file
+    template that already exists locally is never overwritten by an import —
+    a differing one comes in as a copy, so an imported flow can't change the
+    documents another flow generates.
 - **Playground** (opened from the script library) — a bundled demo page
   covering every field type, a field disabled until another is filled, and
   two non-native "custom" widgets, wired to a ready-to-run example script.

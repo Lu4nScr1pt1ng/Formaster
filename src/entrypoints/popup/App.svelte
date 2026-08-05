@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import ArrowCounterClockwiseIcon from 'phosphor-svelte/lib/ArrowCounterClockwiseIcon';
   import BookOpenIcon from 'phosphor-svelte/lib/BookOpenIcon';
+  import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon';
   import CheckCircleIcon from 'phosphor-svelte/lib/CheckCircleIcon';
   import CursorClickIcon from 'phosphor-svelte/lib/CursorClickIcon';
   import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon';
@@ -16,6 +18,10 @@
   import { createKeyedFlashTimer } from '../../lib/flash-timer';
   import type { FillFieldResult, RuntimeMessage } from '../../lib/messaging/types';
   import { createEmptyScript, type FormScript } from '../../lib/schema/script';
+  import { createEmptyFlow } from '../../lib/schema/flow';
+  import { resetFlowIdentity } from '../../lib/storage/flow-identity-store';
+  import { resetFlowValues } from '../../lib/storage/flow-values-store';
+  import { saveFlow } from '../../lib/storage/flows-store';
   import { setReturnTabId } from '../../lib/storage/return-tab-store';
   import { listScripts, saveScript } from '../../lib/storage/scripts-store';
   import { matchesAnyPattern, suggestScriptTarget } from '../../lib/url-match';
@@ -24,14 +30,21 @@
 
   let loading = $state(true);
   let currentUrl = $state('');
+  let allScripts = $state<FormScript[]>([]);
   let matchingScripts = $state<FormScript[]>([]);
   let activeTabId = $state<number | null>(null);
   let runState = $state<Record<string, RunState>>({});
   let runSummary = $state<Record<string, string>>({});
+  let runResults = $state<Record<string, FillFieldResult[]>>({});
+  let expandedResult = $state<Record<string, boolean>>({});
   // Tracks the pending "reset to idle" timeout per script, so a second Run
   // click doesn't get its state stomped by the first click's stale timer.
   const idleFlash = createKeyedFlashTimer<string>((scriptId) => {
     runState = { ...runState, [scriptId]: 'idle' };
+  });
+  let resetFlash = $state<Record<string, boolean>>({});
+  const resetFlashTimer = createKeyedFlashTimer<string>((scriptId) => {
+    resetFlash = { ...resetFlash, [scriptId]: false };
   });
 
   const pageLabel = $derived(safePageLabel(currentUrl));
@@ -40,15 +53,48 @@
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     activeTabId = tab?.id ?? null;
     currentUrl = tab?.url ?? '';
-    const scripts = await listScripts();
-    matchingScripts = scripts.filter((script) => matchesAnyPattern(currentUrl, script.urlPatterns));
+    allScripts = await listScripts();
+    matchingScripts = allScripts.filter((script) => matchesAnyPattern(currentUrl, script.urlPatterns));
     loading = false;
   });
+
+  // "Reset flow" is worth offering whenever this script's Flow can actually
+  // be holding shared state: either another script shares the Flow, or this
+  // one publishes a named variable itself (a single-script Flow can still
+  // read its own variable back via `{{key}}`/`flowVars.key`).
+  function canResetFlow(script: FormScript): boolean {
+    if (allScripts.some((other) => other.id !== script.id && other.flowId === script.flowId)) return true;
+    return script.steps.some((step) => step.type === 'field' && step.field.options?.saveAsFlowVariable !== undefined);
+  }
+
+  // Only the mismatch case (some fields filled, some not) has anything worth
+  // expanding — a network/tab failure never gets a `results` array at all.
+  function hasErrorDetail(scriptId: string): boolean {
+    return (runResults[scriptId] ?? []).some((result) => result.status !== 'filled');
+  }
+
+  function fieldLabel(script: FormScript, fieldId: string): string {
+    const step = script.steps.find((entry) => entry.type === 'field' && entry.field.id === fieldId);
+    return step && step.type === 'field' ? step.field.label || step.field.elementType : fieldId;
+  }
+
+  function toggleExpanded(scriptId: string): void {
+    expandedResult = { ...expandedResult, [scriptId]: !expandedResult[scriptId] };
+  }
+
+  async function resetFlow(script: FormScript): Promise<void> {
+    await resetFlowValues(script.flowId);
+    await resetFlowIdentity(script.flowId);
+    resetFlash = { ...resetFlash, [script.id]: true };
+    resetFlashTimer.trigger(script.id, 1800);
+  }
 
   async function runScript(script: FormScript): Promise<void> {
     if (activeTabId == null) return;
     idleFlash.cancel(script.id);
     runState = { ...runState, [script.id]: 'running' };
+    expandedResult = { ...expandedResult, [script.id]: false };
+    let succeeded = false;
     try {
       // `script` is a live $state proxy element (from matchingScripts); the
       // messaging API structured-clones its payload and throws on a raw proxy.
@@ -57,17 +103,23 @@
         script: $state.snapshot(script),
       } satisfies RuntimeMessage)) as FillFieldResult[] | undefined;
 
+      runResults = { ...runResults, [script.id]: results ?? [] };
       const filled = results?.filter((result) => result.status === 'filled').length ?? 0;
       const total = results?.length ?? 0;
-      const ok = total === 0 || filled === total;
+      succeeded = total === 0 || filled === total;
 
       runSummary = { ...runSummary, [script.id]: total === 0 ? 'No fields to fill' : `${filled} of ${total} filled` };
-      runState = { ...runState, [script.id]: ok ? 'done' : 'error' };
+      runState = { ...runState, [script.id]: succeeded ? 'done' : 'error' };
     } catch {
+      runResults = { ...runResults, [script.id]: [] };
       runSummary = { ...runSummary, [script.id]: 'Could not reach this page' };
       runState = { ...runState, [script.id]: 'error' };
     } finally {
-      idleFlash.trigger(script.id, 2200);
+      // Success is a flash — the green tick reverts to the field count on
+      // its own. A failure is not: reverting would take the "N of M filled"
+      // badge (and the per-field error list it expands) off screen a couple
+      // of seconds after a run, which is exactly when it's being read.
+      if (succeeded) idleFlash.trigger(script.id, 2200);
     }
   }
 
@@ -98,7 +150,8 @@
   async function createScriptForThisPage(): Promise<void> {
     if (activeTabId != null) await setReturnTabId(activeTabId);
     const { name, urlPattern } = suggestScriptTarget(currentUrl);
-    const script = await saveScript(createEmptyScript(name, urlPattern));
+    const flow = await saveFlow(createEmptyFlow(name));
+    const script = await saveScript(createEmptyScript(name, urlPattern, flow.id));
     await browser.tabs.create({ url: browser.runtime.getURL(`/options.html?script=${script.id}`) });
     window.close();
   }
@@ -182,6 +235,16 @@
                       <CheckCircleIcon size={11} weight="fill" />
                       {runSummary[script.id]}
                     </span>
+                  {:else if hasErrorDetail(script.id)}
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-1 text-[10.5px] font-semibold text-red-400 hover:underline"
+                      onclick={() => toggleExpanded(script.id)}
+                    >
+                      <WarningCircleIcon size={11} weight="fill" />
+                      {runSummary[script.id]}
+                      <CaretDownIcon size={9} weight="bold" class="transition {expandedResult[script.id] ? 'rotate-180' : ''}" />
+                    </button>
                   {:else}
                     <span class="inline-flex items-center gap-1 text-[10.5px] font-semibold text-red-400">
                       <WarningCircleIcon size={11} weight="fill" />
@@ -189,7 +252,33 @@
                     </span>
                   {/if}
                 </p>
+                {#if expandedResult[script.id] && hasErrorDetail(script.id)}
+                  <ul class="mt-1.5 space-y-0.5 rounded-lg bg-surface px-2 py-1.5">
+                    {#each runResults[script.id]?.filter((result) => result.status !== 'filled') ?? [] as result (result.fieldId)}
+                      <li class="text-[10.5px] text-ink-3">
+                        <span class="text-ink-2">{fieldLabel(script, result.fieldId)}:</span>
+                        {result.status === 'not-found' ? 'element not found on this page' : (result.message ?? 'error')}
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
               </div>
+
+              {#if canResetFlow(script)}
+                <button
+                  type="button"
+                  class="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg text-ink-3 transition hover:bg-surface-hover hover:text-ink-1"
+                  title="Reset flow"
+                  aria-label="Reset flow"
+                  onclick={() => resetFlow(script)}
+                >
+                  {#if resetFlash[script.id]}
+                    <CheckCircleIcon size={13} weight="fill" class="text-emerald-400" />
+                  {:else}
+                    <ArrowCounterClockwiseIcon size={13} weight="bold" />
+                  {/if}
+                </button>
+              {/if}
 
               <button
                 type="button"

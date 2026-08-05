@@ -12,8 +12,9 @@ export function detectElementType(element: Element): FieldElementType {
   if (tag === 'textarea') return 'textarea';
 
   if (tag === 'input') {
-    const type = (element as HTMLInputElement).type as FieldElementType;
-    return NATIVE_INPUT_TYPES.includes(type) ? type : 'text';
+    const type = (element as HTMLInputElement).type;
+    if (type === 'file') return 'file';
+    return NATIVE_INPUT_TYPES.includes(type as FieldElementType) ? (type as FieldElementType) : 'text';
   }
 
   return 'custom';

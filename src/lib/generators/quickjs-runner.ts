@@ -57,6 +57,9 @@ export async function runCustomCode(
   // to send the updated object back explicitly, since structured cloning
   // breaks the object-identity trick this otherwise relies on.
   runContext: GeneratorRunContext = {},
+  // Resolved by the caller and passed in as plain data — the sandbox has no
+  // storage access (and no async) to look a flow variable up itself.
+  flowVars: Record<string, string> = {},
 ): Promise<string | number | boolean> {
   const { module, shouldInterruptAfterDeadline } = await loadQuickJS();
   const vm = module.newContext();
@@ -72,8 +75,9 @@ export async function runCustomCode(
     setHelpers(vm, code, runContext);
     setJsonGlobal(vm, 'options', options ?? {});
     setJsonGlobal(vm, 'fields', fields);
+    setJsonGlobal(vm, 'flowVars', flowVars);
 
-    const wrapped = `(function (helpers, options, fields) {\n${code}\n})(helpers, options, fields)`;
+    const wrapped = `(function (helpers, options, fields, flowVars) {\n${code}\n})(helpers, options, fields, flowVars)`;
     const result = vm.evalCode(wrapped);
 
     if (result.error) {

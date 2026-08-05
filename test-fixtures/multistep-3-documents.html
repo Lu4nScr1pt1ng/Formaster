@@ -1,0 +1,75 @@
+<!--
+  Step 3 of 3 of the multi-step Flow fixture (see multistep-1-identity.html).
+
+  The payoff step: two `<input type="file">` fields that Formaster fills with
+  documents generated from File Templates, whose text is pulled from what
+  steps 1 and 2 published to the Flow — the name typed on step 1 and the
+  address composed on step 2 have to show up on files attached here, two
+  navigations later.
+
+  Both inputs self-report into #result on `change` (dispatched by
+  `setFileInputValue()`'s synthetic DataTransfer assignment): name, type,
+  size, pixel dimensions, and a count of non-white pixels. The ink count is
+  what separates "a file was attached" from "the flow variables actually got
+  drawn onto it" — a template whose variables silently resolved to empty
+  strings still produces a perfectly valid, perfectly blank PNG.
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Signup — Step 3 of 3: Documents</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 2rem auto; padding: 0 1rem; }
+      .steps { display: flex; gap: 0.5rem; font-size: 0.8rem; color: #888; margin-bottom: 1.5rem; }
+      .steps b { color: #111; }
+      label { display: block; margin-bottom: 0.85rem; font-size: 0.9rem; }
+      input { display: block; margin-top: 0.2rem; }
+      pre { background: #f4f4f4; padding: 0.75rem; font-size: 0.75rem; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <p class="steps">1. Identity › 2. Address › <b>3. Documents</b></p>
+    <h1>Step 3 — Documents</h1>
+
+    <form id="documents-form">
+      <label>Proof of address <input id="proof-of-address" name="proof-of-address" type="file" /></label>
+      <label>Signed declaration <input id="signed-declaration" name="signed-declaration" type="file" /></label>
+    </form>
+
+    <pre id="result"></pre>
+
+    <script>
+      const report = {};
+
+      async function describe(file) {
+        const info = { name: file.name, type: file.type, size: file.size };
+        if (file.type === 'image/png') {
+          const bitmap = await createImageBitmap(file);
+          info.width = bitmap.width;
+          info.height = bitmap.height;
+          const canvas = document.createElement('canvas');
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(bitmap, 0, 0);
+          const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          let inkPixels = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            if (data[i] < 200 || data[i + 1] < 200 || data[i + 2] < 200) inkPixels++;
+          }
+          info.inkPixels = inkPixels;
+        }
+        return info;
+      }
+
+      for (const id of ['proof-of-address', 'signed-declaration']) {
+        document.getElementById(id).addEventListener('change', async (event) => {
+          const file = event.currentTarget.files?.[0];
+          report[id] = file ? await describe(file) : { attached: false };
+          document.getElementById('result').textContent = JSON.stringify(report, null, 2);
+        });
+      }
+    </script>
+  </body>
+</html>

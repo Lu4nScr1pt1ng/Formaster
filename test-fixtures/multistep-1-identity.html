@@ -1,0 +1,43 @@
+<!--
+  Step 1 of 3 of the multi-step Flow fixture
+  (multistep-1-identity.html -> multistep-2-address.html -> multistep-3-documents.html).
+
+  Modelled on a real signup wizard: each step is its own document with its
+  own <form>, and "Continue" is a plain link to the next URL. Deliberately
+  three separate pages rather than one page with hidden panels — a Flow's
+  whole job is carrying values across a real navigation, and a single-page
+  wizard would pass even if nothing were persisted at all.
+
+  This step collects the identity the later steps depend on: the name typed
+  here is the name that must end up printed on the documents attached in
+  step 3.
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Signup — Step 1 of 3: Identity</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 34rem; margin: 2rem auto; padding: 0 1rem; }
+      .steps { display: flex; gap: 0.5rem; font-size: 0.8rem; color: #888; margin-bottom: 1.5rem; }
+      .steps b { color: #111; }
+      label { display: block; margin-bottom: 0.85rem; font-size: 0.9rem; }
+      input { display: block; width: 100%; padding: 0.4rem; margin-top: 0.2rem; font-size: 1rem; }
+      a { display: inline-block; margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <p class="steps"><b>1. Identity</b> › 2. Address › 3. Documents</p>
+    <h1>Step 1 — Identity</h1>
+
+    <form id="identity-form">
+      <label>First name <input id="first-name" name="first-name" type="text" autocomplete="given-name" /></label>
+      <label>Last name <input id="last-name" name="last-name" type="text" autocomplete="family-name" /></label>
+      <!-- CPF is kept untranslated: it's the Brazilian taxpayer id this
+           extension generates, not a word with an English equivalent. -->
+      <label>CPF <input id="cpf" name="cpf" type="text" /></label>
+    </form>
+
+    <a id="next" href="multistep-2-address.html">Continue to address →</a>
+  </body>
+</html>

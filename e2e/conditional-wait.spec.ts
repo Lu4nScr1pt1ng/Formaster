@@ -16,7 +16,7 @@ import type { FormScript } from '../src/lib/schema/script';
  * playwright.config.ts), so this is the closest thing to that path that's
  * actually testable, and it's the exact mechanism being verified either way.
  */
-test('a waitFor step blocks the dependent field until it unlocks', async ({ context, staticServer }) => {
+test('a waitFor step blocks the dependent field until it unlocks', async ({ context, serviceWorker, staticServer }) => {
   const page = await context.newPage();
   const url = staticServer.url('conditional-address-form.html');
   await page.goto(url);
@@ -26,6 +26,7 @@ test('a waitFor step blocks the dependent field until it unlocks', async ({ cont
     schemaVersion: 1,
     id: 'e2e-conditional-wait',
     name: 'e2e conditional wait',
+    flowId: 'e2e-conditional-wait-flow',
     urlPatterns: ['*://*/*'],
     steps: [
       {
@@ -60,7 +61,6 @@ test('a waitFor step blocks the dependent field until it unlocks', async ({ cont
     updatedAt: now,
   };
 
-  const serviceWorker = context.serviceWorkers()[0];
   const results = await serviceWorker.evaluate(
     async ({ script, url }) => {
       const [tab] = await chrome.tabs.query({ url });
@@ -89,10 +89,7 @@ test('a waitFor step blocks the dependent field until it unlocks', async ({ cont
  * own check reports the mismatch. This is the control case: it proves the
  * wait in the test above is actually load-bearing, not incidental.
  */
-test('without the waitFor step, the same script racing the lookup can pick the wrong option', async ({
-  context,
-  staticServer,
-}) => {
+test('without the waitFor step, the same script racing the lookup can pick the wrong option', async ({ context, serviceWorker, staticServer }) => {
   const page = await context.newPage();
   const url = staticServer.url('conditional-address-form.html');
   await page.goto(url);
@@ -102,6 +99,7 @@ test('without the waitFor step, the same script racing the lookup can pick the w
     schemaVersion: 1,
     id: 'e2e-no-wait',
     name: 'e2e no wait',
+    flowId: 'e2e-no-wait-flow',
     urlPatterns: ['*://*/*'],
     steps: [
       {
@@ -128,7 +126,6 @@ test('without the waitFor step, the same script racing the lookup can pick the w
     updatedAt: now,
   };
 
-  const serviceWorker = context.serviceWorkers()[0];
   await serviceWorker.evaluate(
     async ({ script, url }) => {
       const [tab] = await chrome.tabs.query({ url });

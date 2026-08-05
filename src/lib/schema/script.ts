@@ -43,6 +43,7 @@ export const fieldElementTypeSchema = z.enum([
   'range',
   'color',
   'custom',
+  'file',
 ]);
 export type FieldElementType = z.infer<typeof fieldElementTypeSchema>;
 
@@ -123,6 +124,10 @@ export const generatorRefSchema = z.discriminatedUnion('kind', [
     generatorId: z.string().min(1),
     options: z.record(z.string(), z.unknown()).optional(),
   }),
+  z.object({
+    kind: z.literal('file'),
+    templateId: z.string().min(1),
+  }),
 ]);
 export type GeneratorRef = z.infer<typeof generatorRefSchema>;
 
@@ -136,6 +141,8 @@ export const fieldMappingSchema = z.object({
     .object({
       radioValue: z.string().optional(),
       skip: z.boolean().optional(),
+      /** Publishes this field's resolved value under `key` for other scripts in the same Flow to read (see `flow-values-store.ts`). */
+      saveAsFlowVariable: z.object({ key: z.string().min(1) }).optional(),
     })
     .optional(),
 });
@@ -199,6 +206,8 @@ export const formScriptSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),
+  /** Every script belongs to exactly one Flow, even a standalone one-off — see `src/lib/schema/flow.ts`. */
+  flowId: z.string().min(1),
   /** Match patterns, e.g. "*://example.com/signup*" */
   urlPatterns: z.array(z.string().min(1)).min(1),
   steps: z.array(scriptStepSchema),
@@ -225,12 +234,13 @@ export function formatValidationError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function createEmptyScript(name: string, urlPattern: string): FormScript {
+export function createEmptyScript(name: string, urlPattern: string, flowId: string): FormScript {
   const now = new Date().toISOString();
   return {
     schemaVersion: 1,
     id: crypto.randomUUID(),
     name,
+    flowId,
     urlPatterns: [urlPattern],
     steps: [],
     customGenerators: [],
