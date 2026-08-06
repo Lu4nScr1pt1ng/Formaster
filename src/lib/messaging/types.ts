@@ -1,4 +1,5 @@
 import type { FillResult } from '../filler/fill-script';
+import type { ResolvedTemplateTexts } from '../generators/file-generators/resolve-template-texts';
 import type { GeneratorRunContext } from '../generators';
 import type { DetectedGenerator } from '../picker/detect-generator';
 import type { FieldElementType, FormScript, SelectorCandidate } from '../schema/script';
@@ -29,7 +30,7 @@ export type RuntimeMessage =
   // ever uses a PDF template. The background service worker *is* a real ES
   // module and code-splits fine — see file-generators/index.ts and
   // background.ts's handler for this message.
-  | { type: 'fileTemplate/renderPdf'; templateId: string; flowId: string }
+  | { type: 'fileTemplate/renderPdf'; templateId: string; texts: ResolvedTemplateTexts }
   // Sent by the "Fill this field" context-menu item's onClicked handler —
   // content.ts fills whatever element its own `contextmenu` listener last
   // saw, since a DOM element itself can't cross the messaging boundary.

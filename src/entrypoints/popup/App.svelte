@@ -19,7 +19,6 @@
   import type { FillFieldResult, RuntimeMessage } from '../../lib/messaging/types';
   import { createEmptyScript, type FormScript } from '../../lib/schema/script';
   import { createEmptyFlow } from '../../lib/schema/flow';
-  import { resetFlowIdentity } from '../../lib/storage/flow-identity-store';
   import { resetFlowValues } from '../../lib/storage/flow-values-store';
   import { saveFlow } from '../../lib/storage/flows-store';
   import { setReturnTabId } from '../../lib/storage/return-tab-store';
@@ -58,10 +57,10 @@
     loading = false;
   });
 
-  // "Reset flow" is worth offering whenever this script's Flow can actually
-  // be holding shared state: either another script shares the Flow, or this
-  // one publishes a named variable itself (a single-script Flow can still
-  // read its own variable back via `{{key}}`/`flowVars.key`).
+  // "Reset flow" is worth offering whenever this script's Flow can be holding
+  // published variables — the only state a Flow keeps. Either a sibling script
+  // could have published some, or this one does itself (a single-script Flow
+  // can still read its own variable back via `{{key}}`/`flowVars.key`).
   function canResetFlow(script: FormScript): boolean {
     if (allScripts.some((other) => other.id !== script.id && other.flowId === script.flowId)) return true;
     return script.steps.some((step) => step.type === 'field' && step.field.options?.saveAsFlowVariable !== undefined);
@@ -84,7 +83,6 @@
 
   async function resetFlow(script: FormScript): Promise<void> {
     await resetFlowValues(script.flowId);
-    await resetFlowIdentity(script.flowId);
     resetFlash = { ...resetFlash, [script.id]: true };
     resetFlashTimer.trigger(script.id, 1800);
   }

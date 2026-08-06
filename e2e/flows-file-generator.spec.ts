@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures/extension';
-import { field, flow, pdfTemplate, pngTemplate, runOn, script, seed, seedIdentity, storageKeys } from './fixtures/flow-builders';
+import { field, flow, pdfTemplate, pngTemplate, runOn, script, seed, storageKeys } from './fixtures/flow-builders';
 
 /**
  * The motivating end-to-end case for this whole feature: page 1 asks for a
@@ -25,9 +25,20 @@ async function openBothPages(
   return { pageA, pageB, urlA, urlB };
 }
 
+/**
+ * The fixture decodes the attachment asynchronously in its `change` handler,
+ * so its report can land a tick after the fill's own result comes back —
+ * read it straight away and this flakes under load. `clearFileInfo` before a
+ * second run in the same test is the other half: without it, a stale report
+ * from the first run would satisfy the wait and pass for the wrong reason.
+ */
 async function fileInfo(pageB: import('@playwright/test').Page) {
-  const text = await pageB.locator('#file-info').textContent();
-  return JSON.parse(text || '{}');
+  await expect(pageB.locator('#file-info')).not.toBeEmpty();
+  return JSON.parse((await pageB.locator('#file-info').textContent()) || '{}');
+}
+
+async function clearFileInfo(pageB: import('@playwright/test').Page): Promise<void> {
+  await pageB.locator('#file-info').evaluate((el) => (el.textContent = ''));
 }
 
 const publishName = (value: string) =>
@@ -68,6 +79,7 @@ test('a longer name produces visibly more ink, proving the value reaches the can
   await runOn(serviceWorker, uploadDoc('tpl'), urlB);
   const short = await fileInfo(pageB);
 
+  await clearFileInfo(pageB);
   await runOn(serviceWorker, publishName('Ada Lovelace Byron'), urlA);
   await runOn(serviceWorker, uploadDoc('tpl'), urlB);
   const long = await fileInfo(pageB);
@@ -226,7 +238,6 @@ test('a run in one Flow leaves another Flow\'s generated document untouched', as
   const { pageB, urlA, urlB } = await openBothPages(context, staticServer);
   const template = pngTemplate({ id: 'tpl', layers: [{ source: { kind: 'flowVariable', key: 'fullName' } }], outputFilename: '{{fullName}}.png' });
   await seed(serviceWorker, { flows: [flow(FLOW), flow('flow-b')], templates: [template] });
-  await seedIdentity(serviceWorker, FLOW, { firstName: 'Zzztest', lastName: 'Qqqcheck' });
 
   await runOn(serviceWorker, publishName('main-flow'), urlA);
   // A second Flow publishes the *same key* with a different value…

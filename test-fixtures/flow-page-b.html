@@ -7,10 +7,10 @@
 
   On the file input's `change` event — dispatched by `setFileInputValue()`'s
   synthetic DataTransfer assignment — this decodes the attached file and
-  reports name/type/size (and pixel dimensions for a PNG) into #file-info as
-  JSON, so a test can assert on what actually landed in `input.files[0]`
-  instead of trusting the fill's own return value. Same "fixture
-  self-reports into a result element" approach as
+  reports name/type/size (and pixel dimensions for a PNG, drawn text for a
+  PDF) into #file-info as JSON, so a test can assert on what actually landed
+  in `input.files[0]` instead of trusting the fill's own return value. Same
+  "fixture self-reports into a result element" approach as
   conditional-address-form.html.
 -->
 <!DOCTYPE html>
@@ -61,8 +61,77 @@
             info.decodeError = String(error);
           }
         }
+        if (file.type === 'application/pdf') {
+          try {
+            info.text = await extractPdfText(new Uint8Array(await file.arrayBuffer()));
+          } catch (error) {
+            info.decodeError = String(error);
+          }
+        }
         document.getElementById('file-info').textContent = JSON.stringify(info);
       });
+
+      /**
+       * Every string pdf-lib actually drew, in order.
+       *
+       * Counting ink (the PNG path above) proves *something* was drawn but
+       * not *what* — and "what" is exactly the question for a layer whose
+       * text comes from a generator. A PDF keeps its text as real strings, so
+       * this reads them back: inflate each FlateDecode stream, then pull the
+       * operands of every `Tj` show-text operator. pdf-lib writes them as hex
+       * (`<5A7A…> Tj`) for embedded fonts and as literals (`(text) Tj`)
+       * otherwise, so both forms are handled.
+       */
+      async function extractPdfText(bytes) {
+        const raw = latin1(bytes);
+        const found = [];
+        const streamStart = /stream\r?\n/g;
+        let match;
+        while ((match = streamStart.exec(raw))) {
+          const start = match.index + match[0].length;
+          let end = raw.indexOf('endstream', start);
+          if (end < 0) continue;
+          // DecompressionStream rejects trailing bytes after the deflate
+          // stream ends, and PDF puts an EOL between the data and the
+          // `endstream` keyword — so that EOL has to come off first.
+          while (end > start && (raw[end - 1] === '\n' || raw[end - 1] === '\r')) end--;
+          let content;
+          try {
+            content = latin1(await inflate(bytes.subarray(start, end)));
+          } catch {
+            // Not a Flate stream (or a trailing-byte mismatch on one we don't
+            // need) — the page content stream is the only one that matters.
+            continue;
+          }
+          for (const show of content.match(/(?:<[0-9A-Fa-f\s]*>|\((?:[^()\\]|\\.)*\))\s*Tj/g) ?? []) {
+            found.push(decodeShowOperand(show.replace(/\s*Tj$/, '')));
+          }
+        }
+        return found;
+      }
+
+      function decodeShowOperand(operand) {
+        if (!operand.startsWith('<')) return operand.slice(1, -1).replace(/\\(.)/g, '$1');
+        const hex = operand.slice(1, -1).replace(/\s+/g, '');
+        let text = '';
+        // Two hex digits per byte for a WinAnsi-encoded simple font, which is
+        // what pdf-lib's StandardFonts produce.
+        for (let i = 0; i + 1 < hex.length; i += 2) text += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+        return text;
+      }
+
+      async function inflate(chunk) {
+        const stream = new Blob([chunk]).stream().pipeThrough(new DecompressionStream('deflate'));
+        return new Uint8Array(await new Response(stream).arrayBuffer());
+      }
+
+      function latin1(bytes) {
+        let text = '';
+        for (let i = 0; i < bytes.length; i += 8192) {
+          text += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+        }
+        return text;
+      }
     </script>
   </body>
 </html>

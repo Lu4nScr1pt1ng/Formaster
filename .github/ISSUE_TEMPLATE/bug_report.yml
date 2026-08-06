@@ -59,6 +59,8 @@ body:
         - Custom generators (the JavaScript sandbox)
         - Script editor / JSON sync
         - Filling a form (Run)
+        - Flows and flow variables (values shared across pages)
+        - Generated files (PNG/PDF file templates)
         - Import / Export
         - Playground
         - Options / Popup UI

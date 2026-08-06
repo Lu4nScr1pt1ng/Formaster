@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures/extension';
-import { field, flow, flowValues, pngTemplate, runOn, script, seed, seedIdentity } from './fixtures/flow-builders';
+import { field, flow, flowValues, pngTemplate, runOn, script, seed } from './fixtures/flow-builders';
 
 /**
  * The full motivating scenario, end to end: a three-step signup wizard where
@@ -16,6 +16,24 @@ import { field, flow, flowValues, pngTemplate, runOn, script, seed, seedIdentity
  * pass on in-memory state: every value crossing a step has to have survived
  * a real page load via the Flow.
  */
+
+/**
+ * Both file inputs report into `#result` from an async `change` handler, and
+ * the object accumulates one key per input — so a read taken the moment the
+ * fill returns can miss the second document entirely, or (after a re-run)
+ * still be showing the previous pass. Waiting for both keys is the condition
+ * that actually means "this pass is fully reported".
+ */
+async function documentsReport(page: import('@playwright/test').Page) {
+  await expect
+    .poll(async () => Object.keys(JSON.parse((await page.locator('#result').textContent()) || '{}')).sort())
+    .toEqual(['proof-of-address', 'signed-declaration']);
+  return JSON.parse((await page.locator('#result').textContent()) || '{}');
+}
+
+async function clearDocumentsReport(page: import('@playwright/test').Page): Promise<void> {
+  await page.locator('#result').evaluate((el) => (el.textContent = ''));
+}
 
 const FLOW = 'flow-signup';
 
@@ -151,7 +169,7 @@ test('a three-step wizard carries name and address onto documents uploaded two n
     { fieldId: 'f-signed', status: 'filled' },
   ]);
 
-  const report = JSON.parse((await page.locator('#result').textContent()) || '{}');
+  const report = await documentsReport(page);
 
   // The filename is the exact-match proof: these are the very strings typed
   // into step 1, two page loads back.
@@ -215,22 +233,29 @@ test('re-running step 1 changes the name the step 3 documents are generated with
   await page.click('#next');
   await page.waitForURL(urlStep3);
   await runOn(serviceWorker, documentsScript, urlStep3);
-  const firstName = JSON.parse((await page.locator('#result').textContent()) || '{}')['signed-declaration'].name;
+  const firstName = (await documentsReport(page))['signed-declaration'].name;
 
   // Go back to step 1 and fill it again as a different person, so the
-  // document regenerated afterwards must carry the *new* name. The
-  // replacement identity is pinned to a name that can't occur naturally
-  // (it isn't in person.ts's tables) — letting the generator pick freely
-  // would make this assertion a coin flip against the real name list.
+  // document regenerated afterwards must carry the *new* name. The rerun uses
+  // a fixed value rather than the generator: a freshly generated name would
+  // usually differ, but "usually" makes the final assertion a coin flip
+  // against a finite name table.
   await page.goto(urlStep1);
-  await seedIdentity(serviceWorker, FLOW, { firstName: 'Zzztest', lastName: 'Qqqcheck' });
-  await runOn(serviceWorker, identityScript, urlStep1);
+  const rerunStep1 = script({
+    ...identityScript,
+    steps: [
+      field({ id: 'f-first', selector: 'first-name', label: 'First name', generator: { kind: 'fixed', value: 'Zzztest' }, saveAs: 'firstName' }),
+      ...identityScript.steps.slice(1),
+    ],
+  });
+  await runOn(serviceWorker, rerunStep1, urlStep1);
   const updatedFirstName = await page.locator('#first-name').inputValue();
   expect(updatedFirstName).toBe('Zzztest');
 
   await page.goto(urlStep3);
+  await clearDocumentsReport(page);
   await runOn(serviceWorker, documentsScript, urlStep3);
-  const secondName = JSON.parse((await page.locator('#result').textContent()) || '{}')['signed-declaration'].name;
+  const secondName = (await documentsReport(page))['signed-declaration'].name;
 
   expect(secondName).toBe(`signed-declaration-${updatedFirstName}.png`);
   expect(secondName).not.toBe(firstName);

@@ -1,9 +1,8 @@
 import type { FieldMapping, FormScript, WaitForStep } from '../schema/script';
 import { runBuiltinGenerator, type GeneratorRunContext } from '../generators';
-import { renderFile } from '../generators/file-generators';
+import { renderTemplateById } from '../generators/file-generators';
 import { interpolateFlowVariables } from '../flow-variables';
 import { resolveSelectorCandidates } from '../selector/resolve-selector';
-import { getFlowIdentity, setFlowIdentity } from '../storage/flow-identity-store';
 import { getFlowVariables, setFlowValue } from '../storage/flow-values-store';
 import { setCheckbox, setFileInputValue, setNativeInputValue, setRadioGroup, setSelectValue, simulateTyping } from './set-value';
 
@@ -14,10 +13,15 @@ export type FlowVariables = Record<string, string>;
 
 const FILE_RENDER_TIMEOUT_MS = 8000;
 
+/**
+ * Runs generator code wherever QuickJS is available — the background, in a
+ * real fill. Takes the **code**, not a generator id: generators live on a
+ * script *and* on a File Template now, so resolving the id is this module's
+ * job rather than something each caller repeats against `script.customGenerators`.
+ */
 export type CustomGeneratorRunner = (
-  generatorId: string,
+  code: string,
   options: Record<string, unknown> | undefined,
-  script: FormScript,
   context: FieldValueContext,
   generatorRunContext: GeneratorRunContext,
   flowVars: FlowVariables,
@@ -46,13 +50,16 @@ function toCamelKey(text: string): string {
 export async function fillScript(script: FormScript, runCustomGenerator: CustomGeneratorRunner): Promise<FillResult[]> {
   const results: FillResult[] = [];
   const context: FieldValueContext = {};
-  // Loaded from (and saved back to) this script's Flow, so a later script in
-  // the same Flow asking for e.g. `email` correlates with the same person —
-  // see `flow-identity-store.ts`. Within this single run it's still shared
-  // by every builtin generator call the same way it always was, so related
-  // fields (e.g. cep + city + state + neighborhood) still agree with each
-  // other too.
-  const generatorRunContext: GeneratorRunContext = await getFlowIdentity(script.flowId);
+  // Scoped to this one run and deliberately not persisted anywhere: it's what
+  // lets related builtins inside a single fill agree with each other (cep +
+  // city + state + neighborhood, or fullName + email), and nothing more.
+  //
+  // Carrying it across scripts would mean a Flow quietly holding a person and
+  // an address nobody asked it to hold. Anything that *should* outlive a
+  // single run is published explicitly as a named flow variable instead — so
+  // what crosses a page boundary is exactly what a field opted into
+  // publishing, visible in the Flow variables panel and nowhere else.
+  const generatorRunContext: GeneratorRunContext = {};
   // Seeded from what earlier scripts in this Flow already published, then
   // kept up to date in place as this run publishes more (see `fillField`) —
   // so a `{{key}}` or `flowVars.key` can read either a value from a previous
@@ -77,7 +84,6 @@ export async function fillScript(script: FormScript, runCustomGenerator: CustomG
     }
   }
 
-  await setFlowIdentity(script.flowId, generatorRunContext);
   return results;
 }
 
@@ -120,26 +126,52 @@ async function resolveValue(
   generatorRunContext: GeneratorRunContext,
   flowVars: FlowVariables,
 ): Promise<FieldValue> {
-  switch (field.generator.kind) {
+  // Bound to a local first: narrowing a property of a parameter doesn't
+  // survive into the `find` closure below.
+  const ref = field.generator;
+  switch (ref.kind) {
     case 'builtin':
-      return runBuiltinGenerator(field.generator.id, field.generator.options, generatorRunContext);
+      return runBuiltinGenerator(ref.id, ref.options, generatorRunContext);
     case 'fixed':
       // Only strings can carry a `{{key}}` placeholder; a numeric/boolean
       // fixed value passes through untouched rather than being stringified.
-      return typeof field.generator.value === 'string' ? interpolateFlowVariables(field.generator.value, flowVars) : field.generator.value;
-    case 'custom':
-      return runCustomGenerator(field.generator.generatorId, field.generator.options, script, context, generatorRunContext, flowVars);
+      return typeof ref.value === 'string' ? interpolateFlowVariables(ref.value, flowVars) : ref.value;
+    case 'custom': {
+      // Resolved here rather than by the runner, which now takes code: a
+      // template's generators live on the template, so the runner can't know
+      // which list an id belongs to.
+      const generator = script.customGenerators.find((entry) => entry.id === ref.generatorId);
+      if (!generator) throw new Error(`Custom generator "${ref.generatorId}" not found`);
+      return runCustomGenerator(generator.code, ref.options, context, generatorRunContext, flowVars);
+    }
     case 'file':
-      return renderFileWithTimeout(field.generator.templateId, script.flowId);
+      return renderFileWithTimeout(ref.templateId, script, runCustomGenerator, context, generatorRunContext, flowVars);
   }
 }
 
 // The QuickJS watchdog (execution timeout + interrupt handler) has no reach
 // here — file rendering runs as real DOM/WASM code (Canvas, pdf-lib), not
-// inside that sandbox — so it gets its own, simpler wall-clock timeout.
-function renderFileWithTimeout(templateId: string, flowId: string): Promise<File> {
+// inside that sandbox — so it gets its own, simpler wall-clock timeout. It
+// covers the whole render, generator-backed text layers included: a slow
+// layer and a slow canvas are the same wait from the user's side.
+function renderFileWithTimeout(
+  templateId: string,
+  script: FormScript,
+  runCustomGenerator: CustomGeneratorRunner,
+  context: FieldValueContext,
+  generatorRunContext: GeneratorRunContext,
+  flowVars: FlowVariables,
+): Promise<File> {
   return Promise.race([
-    renderFile(templateId, flowId),
+    renderTemplateById(templateId, {
+      flowVars,
+      runContext: generatorRunContext,
+      // The document's text layers draw on exactly what this script's fields
+      // draw on: its own generators, the values filled so far, this Flow's
+      // variables, and the run's identity.
+      customGenerators: script.customGenerators,
+      runCustom: (code, options) => runCustomGenerator(code, options, context, generatorRunContext, flowVars),
+    }),
     new Promise<File>((_, reject) => setTimeout(() => reject(new Error('Generating the file timed out')), FILE_RENDER_TIMEOUT_MS)),
   ]);
 }

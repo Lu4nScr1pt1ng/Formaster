@@ -102,6 +102,9 @@ test('a template authored through the UI really renders at fill time', async ({
   await pageB.goto(urlB);
   expect(await runOn(serviceWorker, savedScript as never, urlB)).toEqual([{ fieldId: 'f-doc', status: 'filled' }]);
 
+  // Waits for the fixture's async decode rather than reading a report that
+  // may not be written yet — see flows-file-generator.spec.ts.
+  await expect(pageB.locator('#file-info')).not.toBeEmpty();
   const info = JSON.parse((await pageB.locator('#file-info').textContent()) || '{}');
   // The filename proves the `{{name}}` typed into the editor resolved
   // against the Flow, and the ink proves the layer was actually drawn.
@@ -160,5 +163,6 @@ test('editing an existing template from the field row updates what gets rendered
   );
   await runOn(serviceWorker, savedScript as never, url);
 
+  await expect(page.locator('#file-info')).not.toBeEmpty();
   expect(JSON.parse((await page.locator('#file-info').textContent()) || '{}').name).toBe('renamed.png');
 });

@@ -53,16 +53,14 @@ export default defineContentScript({
     }
 
     async function runFillScript(script: FormScript) {
-      const results = await fillScript(script, async (generatorId, options, activeScript, context, generatorRunContext, flowVars) => {
-        const generator = activeScript.customGenerators.find((entry) => entry.id === generatorId);
-        if (!generator) throw new Error(`Custom generator "${generatorId}" not found`);
+      const results = await fillScript(script, async (code, options, context, generatorRunContext, flowVars) => {
         // Delegated to the background script rather than run here: the QuickJS
         // WASM interpreter otherwise loads inside this page's isolated world,
         // where a strict (nonce-based) host CSP can still interfere with it.
         // The background service worker is never subject to any website's CSP.
         const response = (await browser.runtime.sendMessage({
           type: 'customGenerator/run',
-          code: generator.code,
+          code,
           options,
           fields: context,
           runContext: generatorRunContext,

@@ -1,7 +1,13 @@
 import type { FileTemplate } from '../../schema/file-template';
-import { resolveOutputFilename, resolveTextSource } from './resolve-text-sources';
+import type { ResolvedTemplateTexts } from './resolve-template-texts';
 
-export async function renderPng(template: FileTemplate, flowId: string): Promise<File> {
+/**
+ * Draws a template onto a real `<canvas>` — content-script only, since that
+ * is where a canvas exists. It only draws: every string it needs was
+ * resolved before it was called (see `resolve-template-texts.ts`), which is
+ * what lets a layer use a generator that can only run in the background.
+ */
+export async function renderPng(template: FileTemplate, texts: ResolvedTemplateTexts): Promise<File> {
   if (!template.canvas) throw new Error(`Template "${template.name}" has no canvas size`);
 
   const canvas = document.createElement('canvas');
@@ -13,18 +19,16 @@ export async function renderPng(template: FileTemplate, flowId: string): Promise
   await drawBackground(ctx, template, canvas.width, canvas.height);
 
   for (const layer of template.textLayers) {
-    const text = await resolveTextSource(layer.source, flowId);
     ctx.font = `${layer.fontWeight === 'bold' ? 'bold ' : ''}${layer.fontSizePx}px sans-serif`;
     ctx.fillStyle = layer.color;
     ctx.textAlign = layer.align;
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(text, layer.x, layer.y, layer.maxWidthPx);
+    ctx.fillText(texts.layers[layer.id] ?? '', layer.x, layer.y, layer.maxWidthPx);
   }
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('Failed to render PNG');
-  const filename = await resolveOutputFilename(template.outputFilename, flowId);
-  return new File([blob], filename, { type: 'image/png' });
+  return new File([blob], texts.filename, { type: 'image/png' });
 }
 
 async function drawBackground(ctx: CanvasRenderingContext2D, template: FileTemplate, width: number, height: number): Promise<void> {

@@ -158,7 +158,7 @@
     const overwritten = scriptCount === 0 ? '' : ` ${scriptCount} script${scriptCount === 1 ? '' : 's'} will be overwritten: ${pendingPlan.collisions.scripts.map((script) => `"${script.name}"`).join(', ')}.`;
     return (
       `A flow named "${pendingPlan.flow.name}" already exists here.${overwritten}` +
-      ' Its shared variables and generated identity are kept as they are — use "Reset flow" afterwards if you want a clean start.'
+      ' Any variables it has already published are kept as they are — use "Reset flow" afterwards if you want a clean start.'
     );
   });
 

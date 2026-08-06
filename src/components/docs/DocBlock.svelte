@@ -38,7 +38,10 @@
       <thead>
         <tr class="border-b border-hair bg-surface">
           {#each block.headers as header, index (index)}
-            <th class="px-3 py-1.5 font-semibold text-ink-1">{header}</th>
+            <!-- Parsed like every other cell: a header naming a JSON key
+                 (`kind`) was otherwise the one place backticks showed up
+                 literally on the page. -->
+            <th class="px-3 py-1.5 font-semibold text-ink-1"><InlineText text={header} /></th>
           {/each}
         </tr>
       </thead>

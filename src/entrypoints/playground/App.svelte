@@ -15,6 +15,7 @@
   import { initContextMenuFill } from '../../lib/picker/context-menu-fill';
   import { buildPlaygroundScript } from '../../lib/playground/seed-script';
   import { duplicateScript, formScriptSchema, formatValidationError, type FormScript } from '../../lib/schema/script';
+  import { buildFlowBundle, downloadFlowBundle } from '../../lib/storage/flow-bundle-store';
   import { clearPlaygroundScriptId, getPlaygroundScriptId, setPlaygroundScriptId } from '../../lib/storage/playground-store';
   import { deleteScript, downloadScriptAsJson, getScript, saveScript } from '../../lib/storage/scripts-store';
   import { pushToast } from '../../lib/toast/toast-store.svelte';
@@ -60,16 +61,13 @@
   // route around. ScriptEditor's own generator preview uses this same
   // direct approach.
   async function runCustomGeneratorInPage(
-    generatorId: string,
+    code: string,
     options: Record<string, unknown> | undefined,
-    activeScript: FormScript,
     context: FieldValueContext,
     generatorRunContext: GeneratorRunContext,
     flowVars: FlowVariables,
   ): Promise<string | number | boolean> {
-    const generator = activeScript.customGenerators.find((entry) => entry.id === generatorId);
-    if (!generator) throw new Error(`Custom generator "${generatorId}" not found`);
-    return runCustomCode(generator.code, options, context, generatorRunContext, flowVars);
+    return runCustomCode(code, options, context, generatorRunContext, flowVars);
   }
 
   async function runOnForm(): Promise<void> {
@@ -119,6 +117,19 @@
   function handleExport(current: FormScript): void {
     downloadScriptAsJson(current);
     pushToast(`"${current.name}" exported`, 'success');
+  }
+
+  async function handleExportFlow(flowId: string): Promise<void> {
+    try {
+      const { bundle, missingTemplateIds } = await buildFlowBundle(flowId);
+      downloadFlowBundle(bundle);
+      pushToast(`"${bundle.flow.name}" exported (last saved state)`, 'success');
+      if (missingTemplateIds.length > 0) {
+        pushToast(`${missingTemplateIds.length} file template reference could not be found and was not included`, 'error', 6000);
+      }
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : 'Could not export this flow', 'error', 6000);
+    }
   }
 
   // A duplicate here isn't itself "the playground script", so it's saved as
@@ -207,6 +218,7 @@
             onSave={handleSave}
             onDelete={handleDelete}
             onExport={handleExport}
+            onExportFlow={handleExportFlow}
             onDuplicate={handleDuplicate}
             showAddFieldsFromPage={false}
           />

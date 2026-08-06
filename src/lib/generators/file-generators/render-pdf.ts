@@ -1,5 +1,5 @@
 import type { FileTemplate } from '../../schema/file-template';
-import { resolveOutputFilename, resolveTextSource } from './resolve-text-sources';
+import type { ResolvedTemplateTexts } from './resolve-template-texts';
 
 // Imported dynamically, same lazy-load spirit as the QuickJS WASM engine in
 // `quickjs-runner.ts` — only paid for when a template with `format: 'pdf'`
@@ -13,7 +13,7 @@ import { resolveOutputFilename, resolveTextSource } from './resolve-text-sources
 // property '__extends' of 'md.default' as it is undefined". `dist/
 // pdf-lib.esm.min.js` has no external imports at all (helpers inlined), so
 // there's no interop to get wrong. Verified by the PDF e2e test.
-export async function renderPdf(template: FileTemplate, flowId: string): Promise<File> {
+export async function renderPdf(template: FileTemplate, texts: ResolvedTemplateTexts): Promise<File> {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib/dist/pdf-lib.esm.min.js');
 
   const pdfDoc =
@@ -35,7 +35,7 @@ export async function renderPdf(template: FileTemplate, flowId: string): Promise
   for (const layer of template.textLayers) {
     const page = pages[layer.pageIndex] ?? pages[0];
     if (!page) continue;
-    const text = await resolveTextSource(layer.source, flowId);
+    const text = texts.layers[layer.id] ?? '';
     const font = layer.fontWeight === 'bold' ? helveticaBold : helvetica;
     const [r, g, b] = hexToRgb(layer.color);
 
@@ -57,12 +57,11 @@ export async function renderPdf(template: FileTemplate, flowId: string): Promise
   }
 
   const bytes = await pdfDoc.save();
-  const filename = await resolveOutputFilename(template.outputFilename, flowId);
   // `pdfDoc.save()`'s TS return type is generic over `ArrayBufferLike`
   // (which technically also covers `SharedArrayBuffer`), but pdf-lib only
   // ever hands back a real `ArrayBuffer`-backed `Uint8Array` — `File`'s
   // constructor type just isn't as loose.
-  return new File([bytes.buffer as ArrayBuffer], filename, { type: 'application/pdf' });
+  return new File([bytes.buffer as ArrayBuffer], texts.filename, { type: 'application/pdf' });
 }
 
 async function dataUrlToArrayBuffer(dataUrl: string): Promise<ArrayBuffer> {

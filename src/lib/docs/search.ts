@@ -58,16 +58,37 @@ function getIndex(sections: DocSection[]): IndexedSection[] {
   return cachedIndex!;
 }
 
-function countOccurrences(haystack: string, needle: string): number {
+/**
+ * Occurrences of `needle` at the **start of a word**, not anywhere at all.
+ *
+ * A plain substring count made short words catastrophic: the letter "a"
+ * matched inside every word containing one — some 3600 hits across these
+ * sections, worth thousands of points — so any query holding a stopword
+ * drowned out even an exact title match. Searching a section's own title
+ * ("What a script is", "Previewing a value") failed to return it.
+ *
+ * Anchoring to word starts keeps the useful half of substring matching —
+ * typing "gener" still finds "generators" — while making "a" cost about what
+ * it's worth.
+ */
+function countWordStarts(haystack: string, needle: string): number {
   if (!needle) return 0;
   let count = 0;
   let index = haystack.indexOf(needle);
   while (index !== -1) {
-    count += 1;
+    const preceding = index === 0 ? '' : haystack[index - 1];
+    if (!/[a-z0-9]/.test(preceding)) count += 1;
     index = haystack.indexOf(needle, index + needle.length);
   }
   return count;
 }
+
+/**
+ * How much one term can ever earn from a body, no matter how often it appears.
+ * Without a ceiling, a long section that happens to repeat a common word
+ * still outranks the section actually titled after the query.
+ */
+const MAX_BODY_HITS_PER_TERM = 4;
 
 function buildSnippet(bodyPlain: string, bodyLower: string, term: string): string {
   const at = term ? bodyLower.indexOf(term) : -1;
@@ -89,8 +110,8 @@ export function search(sections: DocSection[], query: string, limit = 8): Search
   const scored = getIndex(sections).map((indexed) => {
     let score = indexed.titleLower === normalizedQuery ? 50 : 0;
     for (const term of terms) {
-      if (indexed.titleLower.includes(term)) score += 20;
-      score += countOccurrences(indexed.bodyLower, term) * 3;
+      if (countWordStarts(indexed.titleLower, term) > 0) score += 20;
+      score += Math.min(countWordStarts(indexed.bodyLower, term), MAX_BODY_HITS_PER_TERM) * 3;
     }
     return { indexed, score };
   });

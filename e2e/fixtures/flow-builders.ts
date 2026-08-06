@@ -103,7 +103,12 @@ export function pngTemplate(spec: {
   };
 }
 
-export function pdfTemplate(spec: { id: string; layers: Array<Pick<TextLayer, 'source'> & Partial<TextLayer>>; outputFilename?: string }): FileTemplate {
+export function pdfTemplate(spec: {
+  id: string;
+  layers: Array<Pick<TextLayer, 'source'> & Partial<TextLayer>>;
+  outputFilename?: string;
+  name?: string;
+}): FileTemplate {
   return { ...pngTemplate(spec), format: 'pdf', canvas: undefined, outputFilename: spec.outputFilename ?? 'doc.pdf' };
 }
 
@@ -137,33 +142,6 @@ export async function flowValues(serviceWorker: Worker, flowId: string): Promise
     const stored = (await chrome.storage.local.get(key))[key] as Record<string, { value: string }> | undefined;
     return Object.fromEntries(Object.entries(stored ?? {}).map(([k, entry]) => [k, entry.value]));
   }, flowId);
-}
-
-/** The Flow's persisted correlated-identity blob (see `flow-identity-store.ts`). */
-export async function flowIdentity(serviceWorker: Worker, flowId: string): Promise<Record<string, unknown> | undefined> {
-  return serviceWorker.evaluate(async (flowId) => {
-    const key = `formaster:flow-identity:${flowId}`;
-    return (await chrome.storage.local.get(key))[key] as Record<string, unknown> | undefined;
-  }, flowId);
-}
-
-/**
- * Pins a Flow's identity to a person whose names can't occur naturally —
- * neither string is in `person.ts`'s name tables. That turns "did the
- * persisted identity actually get loaded?" into an exact string assertion
- * instead of a probabilistic "the two runs happened to match", and makes
- * the isolation check ("a *different* Flow must not see this person")
- * deterministic rather than a 1-in-N coin flip.
- */
-export async function seedIdentity(serviceWorker: Worker, flowId: string, person: { firstName: string; lastName: string }): Promise<void> {
-  await serviceWorker.evaluate(
-    async ({ flowId, person }) => {
-      await chrome.storage.local.set({
-        [`formaster:flow-identity:${flowId}`]: { 'person:br': { ...person, gender: 'female' } },
-      });
-    },
-    { flowId, person },
-  );
 }
 
 /** Reads a Playwright download into a string — exports are only assertable once the stream is drained. */

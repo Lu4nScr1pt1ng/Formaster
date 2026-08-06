@@ -17,9 +17,25 @@
     onRemove: () => void;
     /** What's in scope for generator code — `helpers`/`fields`/`flowVars`, from the script around this card. */
     memberCompletions?: Record<string, MemberCompletion[]>;
+    /**
+     * Namespaces this card's DOM id. The File Template editor renders the
+     * same script's generators inside its modal while the script editor's own
+     * copies are still mounted behind it — without this they'd collide, and
+     * "scroll to this generator" would land on the one nobody can see.
+     */
+    idPrefix?: string;
   }
 
-  let { generator, expanded, optionsError, onToggleOptions, onSetOptionsSchemaText, onRemove, memberCompletions }: Props = $props();
+  let {
+    generator,
+    expanded,
+    optionsError,
+    onToggleOptions,
+    onSetOptionsSchemaText,
+    onRemove,
+    memberCompletions,
+    idPrefix = 'generator',
+  }: Props = $props();
 
   const removeGate = createConfirmGate();
 
@@ -31,7 +47,7 @@
   });
 </script>
 
-<div id={`generator-${generator.id}`} class="rounded-xl bg-surface p-3">
+<div id={`${idPrefix}-${generator.id}`} class="rounded-xl bg-surface p-3">
   <div class="mb-2 flex items-center justify-between gap-2">
     <div class="group relative flex min-w-0 flex-1 items-center">
       <input

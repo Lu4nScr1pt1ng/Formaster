@@ -24,13 +24,14 @@
   import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
   import WaitForStepRow from './WaitForStepRow.svelte';
   import { createConfirmGate } from '../lib/confirm-gate.svelte';
+  import { useDismissOnOutside, useEscapeToClose } from '../lib/dismiss-on-outside.svelte';
   import { createFlashTimer } from '../lib/flash-timer';
   import { focusWindowIfSupported } from '../lib/focus-window';
   import { fieldContextKey, type FieldValueContext, type FlowVariables } from '../lib/filler/fill-script';
   import { collectSavedFlowVariableKeys } from '../lib/flow-variable-keys';
   import { interpolateFlowVariables } from '../lib/flow-variables';
   import { BUILTIN_GENERATOR_LABELS, runBuiltinGenerator, type GeneratorRunContext } from '../lib/generators';
-  import { renderFile } from '../lib/generators/file-generators';
+  import { renderTemplateById } from '../lib/generators/file-generators';
   import { runCustomCode } from '../lib/generators/quickjs-runner';
   import type { RuntimeMessage } from '../lib/messaging/types';
   import { createEmptyFileTemplate, type FileTemplate } from '../lib/schema/file-template';
@@ -51,7 +52,6 @@
   import { deepEqualIgnoring } from '../lib/stable-stringify';
   import type { UnsavedGuard } from '../lib/unsaved-guard.svelte';
   import { deleteFileTemplate, listFileTemplates, saveFileTemplate } from '../lib/storage/file-templates-store';
-  import { resetFlowIdentity } from '../lib/storage/flow-identity-store';
   import { getFlowVariables, listFlowValues, resetFlowValues } from '../lib/storage/flow-values-store';
   import { getFlow, listFlows, saveFlow } from '../lib/storage/flows-store';
   import { getReturnTabId } from '../lib/storage/return-tab-store';
@@ -63,6 +63,13 @@
     onSave: (script: FormScript) => Promise<FormScript>;
     onDelete: (id: string) => void;
     onExport: (script: FormScript) => void;
+    /**
+     * Exports the whole Flow this script belongs to — the script alone names
+     * a Flow and, through its file fields, File Templates, none of which
+     * travel with it. Offered right beside the single-script export so the
+     * choice is made where the user already is, not only from the sidebar.
+     */
+    onExportFlow: (flowId: string) => void;
     onDuplicate: (script: FormScript) => void;
     /** Off in the Playground: there's no real tab to reopen the picker on, so the button can't do anything there. */
     showAddFieldsFromPage?: boolean;
@@ -81,7 +88,17 @@
     unsavedGuard?: UnsavedGuard;
   }
 
-  let { script, onSave, onDelete, onExport, onDuplicate, showAddFieldsFromPage = true, onDraftChange, unsavedGuard }: Props = $props();
+  let {
+    script,
+    onSave,
+    onDelete,
+    onExport,
+    onExportFlow,
+    onDuplicate,
+    showAddFieldsFromPage = true,
+    onDraftChange,
+    unsavedGuard,
+  }: Props = $props();
 
   // Local editable copy so navigating away without saving doesn't mutate storage.
   // `script` is itself a reactive $state proxy; $state.snapshot() resolves it to an
@@ -173,6 +190,18 @@
   let assignTemplateToFieldIndex = $state<number | null>(null);
 
   const siblingScripts = $derived(allScripts.filter((script) => script.flowId === draft.flowId && script.id !== draft.id));
+  const flowScriptCount = $derived(siblingScripts.length + 1);
+
+  let exportMenuOpen = $state(false);
+  let exportMenuEl = $state<HTMLElement>();
+  useDismissOnOutside(() => exportMenuOpen, () => exportMenuEl, () => (exportMenuOpen = false));
+  useEscapeToClose(() => exportMenuOpen, () => (exportMenuOpen = false));
+
+  function runExport(action: () => void): void {
+    exportMenuOpen = false;
+    action();
+  }
+
   const flowOptions = $derived.by<SearchableSelectOption[]>(() => {
     // Narrowed into a local first — same reason as `selectedCustomGeneratorFields`
     // above: TS can't carry `flow`'s null-narrowing through the `.some()` closure.
@@ -326,9 +355,8 @@
 
   async function resetFlow(): Promise<void> {
     await resetFlowValues(draft.flowId);
-    await resetFlowIdentity(draft.flowId);
     flowValues = {};
-    pushToast('Flow reset — shared variables and identity cleared', 'info');
+    pushToast('Flow reset — shared variables cleared', 'info');
   }
 
   function formatRelativeTime(iso: string): string {
@@ -449,8 +477,11 @@
     return { id: crypto.randomUUID(), name, code: 'return "value";', optionsSchema: [] };
   }
 
-  function addCustomGenerator(): void {
-    draft.customGenerators = [...draft.customGenerators, makeGenerator(`Generator ${draft.customGenerators.length + 1}`)];
+  /** Returns the new generator so a caller can point something at it right away — the File Template editor creates one for a text layer this way. */
+  function addCustomGenerator(): CustomGenerator {
+    const generator = makeGenerator(`Generator ${draft.customGenerators.length + 1}`);
+    draft.customGenerators = [...draft.customGenerators, generator];
+    return generator;
   }
 
   function removeCustomGenerator(id: string): void {
@@ -569,7 +600,15 @@
     if (ref.kind === 'builtin') return runBuiltinGenerator(ref.id, ref.options, generatorRunContext);
     if (ref.kind === 'fixed') return typeof ref.value === 'string' ? interpolateFlowVariables(ref.value, flowVars) : ref.value;
     if (ref.kind === 'file') {
-      const file = await renderFile(ref.templateId, draft.flowId);
+      // The same entry point a real fill uses, so a preview exercises the
+      // template's own generators (and their errors) rather than a
+      // simplified stand-in that could quietly disagree with the run.
+      const file = await renderTemplateById(ref.templateId, {
+        flowVars,
+        runContext: generatorRunContext,
+        customGenerators: $state.snapshot(draft.customGenerators) as CustomGenerator[],
+        runCustom: (code, options) => runCustomCode(code, options, context, generatorRunContext, flowVars),
+      });
       return `File: ${file.name}`;
     }
     const generator = draft.customGenerators.find((entry) => entry.id === ref.generatorId);
@@ -760,14 +799,49 @@
         <CopySimpleIcon size={14} weight="bold" />
         Duplicate
       </button>
-      <button
-        type="button"
-        class="flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
-        onclick={() => onExport($state.snapshot(draft))}
-      >
-        <DownloadSimpleIcon size={14} weight="bold" />
-        Export
-      </button>
+      <!-- Two exports, not one: a script on its own leaves its Flow and its
+           File Templates behind, but it's also still the right thing to hand
+           over when the receiving side already has them. Neither is the
+           obvious default, so both are one click away. -->
+      <div class="relative" bind:this={exportMenuEl}>
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
+          aria-haspopup="menu"
+          aria-expanded={exportMenuOpen}
+          onclick={() => (exportMenuOpen = !exportMenuOpen)}
+        >
+          <DownloadSimpleIcon size={14} weight="bold" />
+          Export
+          <CaretDownIcon size={11} weight="bold" class="text-ink-3" />
+        </button>
+        {#if exportMenuOpen}
+          <div
+            role="menu"
+            tabindex="-1"
+            class="absolute right-0 z-30 mt-1 w-64 overflow-hidden rounded-lg border border-hair bg-surface py-1 shadow-xl"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              class="block w-full px-3 py-1.5 text-left text-sm text-ink-1 transition hover:bg-surface-hover"
+              onclick={() => runExport(() => onExport($state.snapshot(draft)))}
+            >
+              This script only
+              <span class="block text-[11px] text-ink-3">Just "{draft.name || 'this script'}", without its flow or templates.</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="block w-full px-3 py-1.5 text-left text-sm text-ink-1 transition hover:bg-surface-hover"
+              onclick={() => runExport(() => onExportFlow(draft.flowId))}
+            >
+              Whole flow{flowScriptCount > 1 ? ` (${flowScriptCount} scripts)` : ''}
+              <span class="block text-[11px] text-ink-3">Every script in this flow plus the file templates they use.</span>
+            </button>
+          </div>
+        {/if}
+      </div>
       <button
         type="button"
         class="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-1.5 text-sm text-red-400 transition active:scale-[0.97] hover:bg-red-500/10"
@@ -839,7 +913,7 @@
           <button
             type="button"
             class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-ink-3 transition hover:bg-red-500/10 hover:text-red-400"
-            title="Clear this flow's shared variables and generated identity"
+            title="Clear every variable this flow has published"
             onclick={() => resetFlowGate.request(true)}
           >
             Reset
@@ -1106,7 +1180,7 @@
 <ConfirmDialog
   open={resetFlowGate.open}
   title="Reset this flow?"
-  message="Every shared variable and the correlated identity (name/email/address/etc.) for this flow will be cleared. Scripts in it will generate fresh values next run."
+  message="Every variable this flow has published will be cleared. Scripts reading one will error until it's published again."
   confirmLabel="Reset"
   onConfirm={() => resetFlowGate.confirm(resetFlow)}
   onCancel={resetFlowGate.cancel}
@@ -1116,6 +1190,9 @@
   <FileTemplateEditor
     template={editingFileTemplate}
     publishedFlowVariableKeys={allPublishedFlowVariableKeys}
+    customGenerators={draft.customGenerators}
+    onCreateGenerator={addCustomGenerator}
+    onRemoveGenerator={removeCustomGenerator}
     onSave={saveFileTemplateFromEditor}
     onDelete={assignTemplateToFieldIndex === null ? deleteFileTemplateFromEditor : undefined}
     onClose={closeFileTemplateEditor}

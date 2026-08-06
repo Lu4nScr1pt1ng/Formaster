@@ -1,13 +1,18 @@
 import { test, expect } from './fixtures/extension';
-import { field, flow, flowIdentity, flowValues, runOn, script, seed, seedIdentity } from './fixtures/flow-builders';
+import { field, flow, flowValues, runOn, script, seed, storageKeys } from './fixtures/flow-builders';
 
 /**
- * Cross-page Flow behavior: a script on page A publishes named variables
- * and a correlated identity, a script on page B (same Flow) reads them
- * back. Every test here opens both fixture pages as real, separate tabs and
- * drives them in sequence, because "survives a navigation between two
- * unrelated forms" is the entire claim — a single-page setup would pass
- * even if nothing were persisted at all.
+ * Cross-page Flow behavior: a script on page A publishes named variables, a
+ * script on page B (same Flow) reads them back. Every test here opens both
+ * fixture pages as real, separate tabs and drives them in sequence, because
+ * "survives a navigation between two unrelated forms" is the entire claim —
+ * a single-page setup would pass even if nothing were persisted at all.
+ *
+ * Named variables are the *only* thing that crosses a page boundary. The
+ * correlated identity that keeps a run's name/email/address agreeing with
+ * each other is per-run and deliberately not persisted; the tests at the
+ * bottom pin that, since "a Flow quietly remembers a person" would be state
+ * the user never asked for.
  */
 
 const FLOW = 'flow-main';
@@ -238,12 +243,37 @@ test('a skipped field publishes nothing, and a failing field publishes nothing',
   expect(await flowValues(serviceWorker, FLOW)).toEqual({ ok: 'fine' });
 });
 
-test('the correlated identity persists across pages in one Flow and stays out of another', async ({ context, serviceWorker, staticServer }) => {
+test('correlated built-ins agree within one run', async ({ context, serviceWorker, staticServer }) => {
+  const { pageA, urlA } = await openBothPages(context, staticServer);
+  await seed(serviceWorker, { flows: [flow(FLOW)] });
+
+  // One run, three fields off the same identity: whatever person gets picked,
+  // the email has to be derived from the name that was typed above it.
+  await runOn(
+    serviceWorker,
+    script({
+      id: 's-a',
+      flowId: FLOW,
+      steps: [
+        field({ id: 'f1', selector: 'first-name', generator: { kind: 'builtin', id: 'firstName' } }),
+        field({ id: 'f2', selector: 'last-name', generator: { kind: 'builtin', id: 'lastName' } }),
+        field({ id: 'f3', selector: 'email', elementType: 'email', generator: { kind: 'builtin', id: 'email' } }),
+      ],
+    }),
+    urlA,
+  );
+
+  const first = await pageA.locator('#first-name').inputValue();
+  const last = await pageA.locator('#last-name').inputValue();
+  const normalize = (text: string) => text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]/g, '');
+  // `email` appends a random number and domain, so only the name-derived
+  // local part is stable — that's what correlating within a run means.
+  expect(await pageA.locator('#email').inputValue()).toMatch(new RegExp(`^${normalize(first)}\\.${normalize(last)}\\d+@`));
+});
+
+test('that identity is never persisted, so nothing carries to the next script', async ({ context, serviceWorker, staticServer }) => {
   const { pageA, pageB, urlA, urlB } = await openBothPages(context, staticServer);
-  await seed(serviceWorker, { flows: [flow(FLOW), flow(OTHER_FLOW)] });
-  // Neither name exists in person.ts's tables, so "the persisted identity
-  // was loaded" is an exact assertion rather than a lucky match.
-  await seedIdentity(serviceWorker, FLOW, { firstName: 'Zzztest', lastName: 'Qqqcheck' });
+  await seed(serviceWorker, { flows: [flow(FLOW)] });
 
   const nameFields = (ids: { first: string; last: string }) => [
     field({ id: ids.first, selector: 'first-name', generator: { kind: 'builtin', id: 'firstName' } }),
@@ -251,57 +281,59 @@ test('the correlated identity persists across pages in one Flow and stays out of
   ];
 
   await runOn(serviceWorker, script({ id: 's-a', flowId: FLOW, steps: nameFields({ first: 'f1', last: 'f2' }) }), urlA);
-  await expect(pageA.locator('#first-name')).toHaveValue('Zzztest');
-  await expect(pageA.locator('#last-name')).toHaveValue('Qqqcheck');
+  await expect(pageA.locator('#first-name')).not.toHaveValue('');
 
-  // Same Flow, different page, a script that never generated a name before:
-  // it must still land on the same person.
   await runOn(serviceWorker, script({ id: 's-b', flowId: FLOW, steps: nameFields({ first: 'f3', last: 'f4' }) }), urlB);
-  await expect(pageB.locator('#first-name')).toHaveValue('Zzztest');
-  await expect(pageB.locator('#last-name')).toHaveValue('Qqqcheck');
+  await expect(pageB.locator('#first-name')).not.toHaveValue('');
 
-  // A different Flow must generate its own person — it can never be this one.
-  await runOn(serviceWorker, script({ id: 's-other', flowId: OTHER_FLOW, steps: nameFields({ first: 'f5', last: 'f6' }) }), urlA);
-  await expect(pageA.locator('#first-name')).not.toHaveValue('Zzztest');
+  // The deterministic half of the claim: two runs in the same Flow left no
+  // identity behind at all. Asserting the two *names differ* would be a coin
+  // flip against a finite name table; asserting nothing was written is not.
+  expect(await storageKeys(serviceWorker, 'formaster:flow-identity:')).toEqual([]);
+  // And the Flow's only cross-page state is what a field explicitly published
+  // — here, nothing, because no field asked to publish.
+  expect(await flowValues(serviceWorker, FLOW)).toEqual({});
 });
 
-test('an email generated on page B matches the identity page A already established', async ({ context, serviceWorker, staticServer }) => {
-  const { pageB, urlA, urlB } = await openBothPages(context, staticServer);
+test('to carry a generated name to the next page, a field publishes it', async ({ context, serviceWorker, staticServer }) => {
+  const { pageA, pageB, urlA, urlB } = await openBothPages(context, staticServer);
   await seed(serviceWorker, { flows: [flow(FLOW)] });
-  await seedIdentity(serviceWorker, FLOW, { firstName: 'Zzztest', lastName: 'Qqqcheck' });
 
+  // The replacement idiom for an implicit shared identity: generate once,
+  // publish under a name, read it back by that name. Explicit, visible in the
+  // Flow variables panel, and scoped to exactly what was asked for.
   await runOn(
     serviceWorker,
-    script({ id: 's-a', flowId: FLOW, steps: [field({ id: 'f1', selector: 'full-name', generator: { kind: 'builtin', id: 'fullName' } })] }),
+    script({
+      id: 's-a',
+      flowId: FLOW,
+      steps: [field({ id: 'f1', selector: 'full-name', generator: { kind: 'builtin', id: 'fullName' }, saveAs: 'fullName' })],
+    }),
     urlA,
   );
+  const generated = await pageA.locator('#full-name').inputValue();
+  expect(generated).not.toBe('');
+
   await runOn(
     serviceWorker,
     script({
       id: 's-b',
       flowId: FLOW,
-      steps: [field({ id: 'f2', selector: 'email', elementType: 'email', generator: { kind: 'builtin', id: 'email' } })],
+      steps: [field({ id: 'f2', selector: 'greeting', generator: { kind: 'fixed', value: '{{fullName}}' } })],
     }),
     urlB,
   );
-
-  // `email` appends a random number and picks a random domain each call, so
-  // only the name-derived local part is stable — that's what correlation means.
-  await expect(pageB.locator('#email')).toHaveValue(/^zzztest\.qqqcheck\d+@/);
+  await expect(pageB.locator('#greeting')).toHaveValue(generated);
 });
 
-test('Reset flow clears both the named variables and the correlated identity', async ({ context, serviceWorker, staticServer }) => {
-  const { pageA, urlA, urlB } = await openBothPages(context, staticServer);
+test('Reset flow clears the named variables', async ({ context, serviceWorker, staticServer }) => {
+  const { urlA, urlB } = await openBothPages(context, staticServer);
   await seed(serviceWorker, { flows: [flow(FLOW)] });
-  await seedIdentity(serviceWorker, FLOW, { firstName: 'Zzztest', lastName: 'Qqqcheck' });
 
   const scriptA = script({
     id: 's-a',
     flowId: FLOW,
-    steps: [
-      field({ id: 'f-name', selector: 'full-name', generator: { kind: 'fixed', value: 'Ada Lovelace' }, saveAs: 'fullName' }),
-      field({ id: 'f-first', selector: 'first-name', generator: { kind: 'builtin', id: 'firstName' } }),
-    ],
+    steps: [field({ id: 'f-name', selector: 'full-name', generator: { kind: 'fixed', value: 'Ada Lovelace' }, saveAs: 'fullName' })],
   });
   const readBack = script({
     id: 's-b',
@@ -311,18 +343,13 @@ test('Reset flow clears both the named variables and the correlated identity', a
 
   await runOn(serviceWorker, scriptA, urlA);
   expect(await flowValues(serviceWorker, FLOW)).toEqual({ fullName: 'Ada Lovelace' });
-  expect(await flowIdentity(serviceWorker, FLOW)).toBeDefined();
 
   await serviceWorker.evaluate(async (flowId) => {
-    await chrome.storage.local.remove([`formaster:flow-values:${flowId}`, `formaster:flow-identity:${flowId}`]);
+    await chrome.storage.local.remove(`formaster:flow-values:${flowId}`);
   }, FLOW);
 
-  // Both halves must actually be gone: the named variable no longer
-  // resolves, and the identity is regenerated instead of reused.
+  // Gone for real: the named variable no longer resolves, and says so.
   const afterReset = await runOn(serviceWorker, readBack, urlB);
   expect(afterReset[0].status).toBe('error');
   expect(afterReset[0].message).toContain('is not set yet');
-
-  await runOn(serviceWorker, scriptA, urlA);
-  await expect(pageA.locator('#first-name')).not.toHaveValue('Zzztest');
 });

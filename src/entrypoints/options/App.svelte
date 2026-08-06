@@ -716,6 +716,7 @@
             onSave={handleSave}
             onDelete={handleDelete}
             onExport={handleExport}
+            onExportFlow={handleExportFlow}
             onDuplicate={handleDuplicate}
             onDraftChange={(draft) => (liveDraft = draft)}
             {unsavedGuard}

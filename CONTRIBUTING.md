@@ -68,7 +68,11 @@ section for the exact steps and version requirements.
   `password.ts`, `misc.ts`), the registry that wires them to a
   `BuiltinGeneratorId` (`index.ts`), the per-generator UI-editable options
   table (`option-fields.ts`), and the QuickJS sandbox that runs
-  user-authored custom generators (`quickjs-runner.ts`).
+  user-authored custom generators (`quickjs-runner.ts`). `file-generators/`
+  is the separate path that turns a File Template into a real `File`:
+  `resolve-text-sources.ts`/`resolve-template-texts.ts` turn every text layer
+  into a finished string first, then `render-png.ts` (canvas, content script)
+  or `render-pdf.ts` (pdf-lib, background worker) only draws.
 - `src/lib/picker/overlay.ts` — the `PickerOverlay` class: the shadow-DOM
   hover/click UI injected into the page during mapping.
 - `src/lib/filler/` — `fill-script.ts` walks a script's steps and resolves
@@ -114,6 +118,14 @@ fixed delays, which is what keeps it fast and non-flaky. `npm run check`
 - **`e2e/import-export.spec.ts`** — a script round-trips import → export →
   re-import byte-for-byte, and invalid JSON is rejected with a visible error
   rather than silently accepted.
+- **`e2e/flows-*.spec.ts`** and **`e2e/flow-import-export.spec.ts`** — the
+  multi-page half of the app: variables published on one page and read on
+  the next, generated PNG/PDF uploads, template authoring, the sidebar's
+  flow folders, and moving a whole flow through export/import. These drive
+  several real tabs in sequence, and assert on the *file that landed in
+  `input.files[0]`* — `test-fixtures/flow-page-b.html` decodes it and reports
+  its size, pixels, and (for a PDF) the text actually drawn, so "a file was
+  attached" can never be mistaken for "the right thing was rendered".
 
 What it deliberately doesn't cover: a real browser-action popup bubble isn't
 something Playwright can drive at all (only pages it navigates itself), so

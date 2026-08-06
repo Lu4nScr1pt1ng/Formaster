@@ -1,22 +1,40 @@
 <script lang="ts">
+  import { BUILTIN_GENERATOR_LABELS } from '../lib/generators';
   import type { FileTemplate, TextLayer } from '../lib/schema/file-template';
+  import type { CustomGenerator } from '../lib/schema/script';
 
   interface Props {
     template: FileTemplate;
+    /** The script's generators, only so a `custom` layer can be labelled by name instead of by id. */
+    customGenerators: CustomGenerator[];
   }
 
-  let { template }: Props = $props();
+  let { template, customGenerators }: Props = $props();
 
   let canvasEl = $state<HTMLCanvasElement>();
 
-  // Live, synchronous preview only — a `flowVariable` layer shows its `{{key}}`
-  // placeholder instead of a real value. The real render (`render-png.ts`)
-  // resolves those against `flow-values-store.ts` at fill time; doing that
-  // here too would mean an async storage round trip on every keystroke while
-  // editing a layer, for no benefit (there's no "current" flow to resolve
-  // against while authoring a template shared across flows).
+  // Live, synchronous preview only — every layer that isn't fixed text shows
+  // a placeholder standing for the shape of its value, not the value itself.
+  //
+  // A `flowVariable` would need an async storage read on every keystroke,
+  // against a flow that doesn't exist while authoring a shared template. A
+  // generator layer *could* run (builtins are synchronous), but re-running it
+  // on every keystroke would reshuffle the drawing under the user's cursor,
+  // and a custom one is async QuickJS besides. The per-layer "Preview" button
+  // in the editor resolves any of them on demand, for real.
   function previewText(layer: TextLayer): string {
-    return layer.source.kind === 'literal' ? layer.source.value || '(empty)' : `{{${layer.source.key || '…'}}}`;
+    switch (layer.source.kind) {
+      case 'literal':
+        return layer.source.value || '(empty)';
+      case 'flowVariable':
+        return `{{${layer.source.key || '…'}}}`;
+      case 'builtin':
+        return `‹${BUILTIN_GENERATOR_LABELS[layer.source.id]}›`;
+      case 'custom': {
+        const generatorId = layer.source.generatorId;
+        return `‹${customGenerators.find((entry) => entry.id === generatorId)?.name ?? 'generator'}›`;
+      }
+    }
   }
 
   $effect(() => {

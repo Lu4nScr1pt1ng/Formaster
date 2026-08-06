@@ -9,6 +9,7 @@ import type {
   RuntimeMessage,
 } from '../lib/messaging/types';
 import { generatorRefFromSuggestion } from '../lib/picker/detect-generator';
+import type { ResolvedTemplateTexts } from '../lib/generators/file-generators/resolve-template-texts';
 import { getFileTemplate } from '../lib/storage/file-templates-store';
 import { clearPendingPickerSession, getPendingPickerSession, setPendingPickerSession } from '../lib/storage/pending-picker-store';
 import { setReturnTabId } from '../lib/storage/return-tab-store';
@@ -113,11 +114,20 @@ export default defineBackground(() => {
         (value): CustomGeneratorRunResult => ({ value, runContext }),
       );
     } else if (message.type === 'fileTemplate/renderPdf') {
-      return renderPdfTemplate(message.templateId, message.flowId);
+      return renderPdfTemplate(message.templateId, message.texts);
     }
   });
 
-  async function renderPdfTemplate(templateId: string, flowId: string): Promise<TransferableFile> {
+  /**
+   * Re-reads the template here rather than accepting it in the message: the
+   * caller already has it, but a base-PDF background is a multi-megabyte
+   * base64 string, and structured-cloning that across the messaging boundary
+   * on every render costs far more than one local storage read. Only the
+   * resolved `texts` have to travel — they're the part the caller knows and
+   * this worker can't work out for itself (a `custom` layer's value depends
+   * on the fields filled around it).
+   */
+  async function renderPdfTemplate(templateId: string, texts: ResolvedTemplateTexts): Promise<TransferableFile> {
     const template = await getFileTemplate(templateId);
     if (!template) throw new Error('File template not found — it may have been deleted.');
     // Dynamically imported so pdf-lib is only ever fetched the first time a
@@ -125,7 +135,7 @@ export default defineBackground(() => {
     // `quickjs-runner.ts`'s WASM module, and the whole reason this renders
     // here instead of in the content script (see `fileTemplate/renderPdf`).
     const { renderPdf } = await import('../lib/generators/file-generators/render-pdf');
-    return toTransferableFile(await renderPdf(template, flowId));
+    return toTransferableFile(await renderPdf(template, texts));
   }
 
   // Extensions can't force their popup open on navigation — only a user

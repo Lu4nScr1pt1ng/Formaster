@@ -78,17 +78,32 @@ field type, wired to a ready-to-run example script, with nothing to set up.
     integer/decimal/boolean/lorem, UUID, …), a fixed value, or custom
     JavaScript with live preview. Most built-ins expose their own options
     right next to the generator picker (mask on/off, min/max, character
-    classes, BR vs US locale, gender, credit card brand, etc.). Name and
-    email generators on the same script share one random identity — first
+    classes, BR vs US locale, gender, credit card brand, etc.). Within a
+    single run, name and email generators share one random identity — first
     name, last name, and email all agree with each other instead of each
-    picking an unrelated random person.
+    picking an unrelated random person. That agreement lasts for that run
+    only; nothing about it is stored.
   - Custom generators can declare their own options schema too, so any field
     using that generator gets matching controls (checkbox/number/select) —
     the same mechanism as the built-ins, just author-defined.
   - The whole script is also editable as raw JSON side-by-side with the visual
     form, kept in sync live in both directions.
+  - Any field can publish its value to its flow under a name, and later
+    fields — or a later script on a later page in the same flow — read it
+    back as `{{key}}` or `flowVars.key`. That is the only thing that carries
+    across pages: a value crosses because a field was told to publish it,
+    not because the flow remembers anything on its own.
+  - A field on an `<input type="file">` generates a real PNG or PDF from a
+    **file template** — a background (solid color, an uploaded image, or an
+    uploaded base PDF) plus positioned text layers, each drawing a fixed
+    string, a flow variable, a built-in generator, or one of the script's
+    own custom generators. The result is attached to the input as a real
+    file, so page 2 can upload a document carrying the name from page 1.
   - Scripts and fields can be duplicated; import accepts a file or pasted
     JSON, validated before it's accepted.
+  - A script exports on its own or as its whole flow — both offered from the
+    editor's Export button, and the flow bundle also from the folder's
+    download icon.
   - Exporting a flow bundles the flow, every script in it, and the file
     templates those scripts reference, so a multi-page setup moves in one
     piece. Import takes either a single script or a whole flow. A file
@@ -108,15 +123,17 @@ field type, wired to a ready-to-run example script, with nothing to set up.
 - **Documentation** (opened from the popup or the script library) — a bundled,
   searchable reference covering field mapping and selectors, delay/conditional
   wait steps, every built-in generator and its options, writing custom
-  generators, referencing earlier fields from one, and the full script JSON
-  shape for hand-authoring or generating scripts programmatically.
+  generators, referencing earlier fields from one, flows and the files they
+  generate, and the full script JSON shape for hand-authoring or generating
+  scripts programmatically.
 - **Custom generators** run inside a QuickJS WASM VM (`src/lib/generators/quickjs-runner.ts`),
   a real interpreted sandbox with no access to the page, the extension, or
   any browser API. Generator code is the *body* of a function receiving
   `helpers` (the built-in generators), `options` (this field's configured
-  values, per its own options schema), and `fields` (every value already
-  filled earlier in that run, so one field can build on another — e.g. a
-  "confirm password" field reading `fields.password`). This works
+  values, per its own options schema), `fields` (every value already filled
+  earlier in that run, so one field can build on another — e.g. a "confirm
+  password" field reading `fields.password`), and `flowVars` (values earlier
+  scripts in the same flow published by name). This works
   identically on every MV3 browser (Chrome, Brave, Opera, Firefox) with no
   per-browser special-casing — WebAssembly compilation is covered by the
   `wasm-unsafe-eval` CSP directive, unlike `eval`/`new Function`, which
@@ -181,10 +198,29 @@ npm run check            # svelte-check (TypeScript)
 
 ## Privacy
 
-Formaster doesn't collect, transmit, or share anything. Scripts, custom
-generators, and settings are written to `browser.storage.local` and never
-leave your device — there's no telemetry, no remote server, and no network
-request the extension makes on its own.
+Formaster doesn't collect, transmit, or share anything. Everything it keeps —
+scripts, custom generators, flows and the variables they publish, file
+templates including any image or base PDF you upload into one, and settings —
+is written to `browser.storage.local` and never leaves your device. Generated
+files are built in the browser and attached straight to the page's file input;
+they are never uploaded anywhere by the extension. There's no telemetry, no
+remote server, and no network request the extension makes on its own.
+
+That claim is only worth as much as the access behind it, so here is all of it
+— everything below is visible in `wxt.config.ts` and in the generated
+`manifest.json`:
+
+| Requested | What it's for |
+| --- | --- |
+| `storage` | Keeping your scripts, flows, and templates in `browser.storage.local`. Local only — this is not `storage.sync`, so nothing is uploaded to a browser account either. |
+| `tabs` | Reading the active tab's URL to decide which scripts match it, and opening/returning to the script library and playground tabs. |
+| `contextMenus` | The two right-click items ("Fill this field", "Run script for this page"). |
+| A content script on `<all_urls>` | The picker and the filler have to run on whatever page you point them at, and which page that is isn't known ahead of time. It attaches a right-click listener and waits for a message from the extension — it doesn't read, collect, or transmit page content on its own. |
+| CSP `wasm-unsafe-eval` | Compiling the QuickJS sandbox that runs custom generators. Notably *not* `unsafe-eval`. |
+
+There are no `host_permissions`, so the extension cannot make requests to any
+site; the Firefox build additionally declares `data_collection_permissions:
+{ required: ['none'] }`.
 
 ## Contributing
 

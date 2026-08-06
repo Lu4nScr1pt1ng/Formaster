@@ -5,6 +5,7 @@ import {
   field,
   flow,
   getStored,
+  pdfTemplate,
   pngTemplate,
   readDownload,
   runOn,
@@ -38,6 +39,16 @@ async function exportFlowFrom(options: Page, flowName: string): Promise<FlowBund
   const downloadPromise = options.waitForEvent('download');
   await options.locator('nav div', { hasText: flowName }).getByRole('button', { name: 'Export flow' }).first().click();
   return JSON.parse(await readDownload(await downloadPromise)) as FlowBundle;
+}
+
+/** Waits for the fixture's async decode instead of reading a possibly-stale report — see flows-file-generator.spec.ts. */
+async function fileInfo(page: Page) {
+  await expect(page.locator('#file-info')).not.toBeEmpty();
+  return JSON.parse((await page.locator('#file-info').textContent()) || '{}');
+}
+
+async function clearFileInfo(page: Page): Promise<void> {
+  await page.locator('#file-info').evaluate((el) => (el.textContent = ''));
 }
 
 async function importBundle(options: Page, bundle: unknown): Promise<void> {
@@ -115,9 +126,163 @@ test('a flow exports with every script and template, and the reimported flow sti
   await runOn(serviceWorker, restoredA!, urlA);
   expect(await runOn(serviceWorker, restoredB!, urlB)).toEqual([{ fieldId: 'f-doc', status: 'filled' }]);
 
-  const info = JSON.parse((await pageB.locator('#file-info').textContent()) || '{}');
+  const info = await fileInfo(pageB);
   expect(info.name).toBe('doc-Ada Lovelace.png');
   expect(info.inkPixels).toBeGreaterThan(100);
+});
+
+test("the script editor's Export offers both the script alone and its whole flow", async ({ context, extensionId, serviceWorker }) => {
+  await seed(serviceWorker, {
+    flows: [flow(FLOW, 'Document flow')],
+    scripts: [publisher, documentScript],
+    templates: [docTemplate],
+  });
+
+  const options = await openOptions(context, extensionId, '?script=s-b');
+
+  // "This script only" is the old behavior, still one click away…
+  const scriptDownload = options.waitForEvent('download');
+  await options.getByRole('button', { name: 'Export', exact: true }).click();
+  await options.getByRole('menuitem', { name: /This script only/ }).click();
+  const exportedScript = JSON.parse(await readDownload(await scriptDownload)) as FormScript;
+  expect(exportedScript.id).toBe('s-b');
+  expect(exportedScript).not.toHaveProperty('scripts');
+
+  // …and the whole bundle is available without going back to the sidebar,
+  // which is where it used to be the only option.
+  const flowDownload = options.waitForEvent('download');
+  await options.getByRole('button', { name: 'Export', exact: true }).click();
+  await options.getByRole('menuitem', { name: /Whole flow \(2 scripts\)/ }).click();
+  const bundle = JSON.parse(await readDownload(await flowDownload)) as FlowBundle;
+
+  expect(bundle.kind).toBe('formaster-flow');
+  expect(bundle.scripts.map((entry) => entry.id).sort()).toEqual(['s-a', 's-b']);
+  expect(bundle.fileTemplates.map((entry) => entry.id)).toEqual(['tpl']);
+});
+
+test('a generator-backed document survives the round trip and still renders on the other side', async ({
+  context,
+  staticServer,
+  extensionId,
+  serviceWorker,
+}) => {
+  // The hardest thing to move: a template whose text layer computes its
+  // value. The reference crosses two records — the layer names a generator on
+  // the *script* — so it only works on the other side if both halves land and
+  // still agree on the id.
+  const generatorTemplate = pdfTemplate({
+    id: 'tpl-gen',
+    layers: [{ source: { kind: 'custom', generatorId: 'g1', options: { prefix: 'DOC' } } }],
+    outputFilename: 'generated.pdf',
+  });
+  const generatorScript = script({
+    id: 's-gen',
+    flowId: FLOW,
+    name: 'Page B — generated document',
+    steps: [field({ id: 'f-doc', selector: 'document', elementType: 'file', generator: { kind: 'file', templateId: 'tpl-gen' } })],
+    customGenerators: [
+      { id: 'g1', name: 'Doc code', code: 'return options.prefix + "-" + flowVars.fullName.toUpperCase();', optionsSchema: [] },
+    ],
+  });
+  await seed(serviceWorker, {
+    flows: [flow(FLOW, 'Document flow')],
+    scripts: [publisher, generatorScript],
+    templates: [generatorTemplate],
+  });
+
+  const options = await openOptions(context, extensionId);
+  const bundle = await exportFlowFrom(options, 'Document flow');
+  const bundledScript = bundle.scripts.find((entry) => entry.id === 's-gen')!;
+  expect(bundledScript.customGenerators).toHaveLength(1);
+  expect(bundledScript.customGenerators[0].code).toContain('flowVars.fullName');
+  // The layer still names it, and the template carries no generators of its own.
+  expect(bundle.fileTemplates[0].textLayers[0].source).toMatchObject({ kind: 'custom', generatorId: 'g1' });
+
+  // Wipe: whatever renders below came back from the file alone.
+  await clearStorage(serviceWorker);
+  const fresh = await openOptions(context, extensionId);
+  await importBundle(fresh, bundle);
+  await fresh.getByRole('button', { name: 'Import', exact: true }).last().click();
+  await expect(fresh.locator('nav button[aria-expanded]', { hasText: 'Document flow' })).toBeVisible();
+
+  const pageA = await context.newPage();
+  const urlA = staticServer.url('flow-page-a.html');
+  await pageA.goto(urlA);
+  const pageB = await context.newPage();
+  const urlB = staticServer.url('flow-page-b.html');
+  await pageB.goto(urlB);
+
+  await runOn(serviceWorker, (await getStored<FormScript>(serviceWorker, 'formaster:script:s-a'))!, urlA);
+  const results = await runOn(serviceWorker, (await getStored<FormScript>(serviceWorker, 'formaster:script:s-gen'))!, urlB);
+  expect(results).toEqual([{ fieldId: 'f-doc', status: 'filled' }]);
+
+  // The restored generator ran, saw the restored Flow's variable, and got its
+  // own options — a dangling `generatorId` would have errored instead.
+  const info = await fileInfo(pageB);
+  expect(info.name).toBe('generated.pdf');
+  expect(info.text).toEqual(['DOC-ADA LOVELACE']);
+});
+
+test('a shared template renders for the importing flow using its own script generator', async ({
+  context,
+  staticServer,
+  extensionId,
+  serviceWorker,
+}) => {
+  // The flip side of a layer naming the script's generator: the same template
+  // is a layout two flows can share, each filling it from its own generator.
+  const sharedTemplate = pdfTemplate({
+    id: 'tpl-shared',
+    layers: [{ source: { kind: 'custom', generatorId: 'g1' } }],
+    outputFilename: 'shared.pdf',
+  });
+  const docField = field({ id: 'f-doc', selector: 'document', elementType: 'file', generator: { kind: 'file', templateId: 'tpl-shared' } });
+  await seed(serviceWorker, {
+    flows: [flow('flow-local', 'Local flow')],
+    templates: [sharedTemplate],
+    scripts: [
+      script({
+        id: 's-local',
+        flowId: 'flow-local',
+        steps: [docField],
+        customGenerators: [{ id: 'g1', name: 'Doc code', code: 'return "LOCAL";', optionsSchema: [] }],
+      }),
+    ],
+  });
+
+  const incoming: FlowBundle = {
+    kind: 'formaster-flow',
+    schemaVersion: 1,
+    flow: flow('flow-incoming', 'Incoming flow'),
+    scripts: [
+      script({
+        id: 's-incoming',
+        flowId: 'flow-incoming',
+        steps: [docField],
+        customGenerators: [{ id: 'g1', name: 'Doc code', code: 'return "INCOMING";', optionsSchema: [] }],
+      }),
+    ],
+    fileTemplates: [sharedTemplate],
+  };
+
+  const options = await openOptions(context, extensionId);
+  await importBundle(options, incoming);
+  await options.getByRole('button', { name: 'Import', exact: true }).last().click();
+  await expect(options.locator('nav button[aria-expanded]', { hasText: 'Incoming flow' })).toBeVisible();
+
+  // Byte-identical template, so it was reused rather than copied.
+  expect(await storageKeys(serviceWorker, 'formaster:file-template:')).toHaveLength(1);
+
+  const page = await context.newPage();
+  const url = staticServer.url('flow-page-b.html');
+  await page.goto(url);
+
+  await runOn(serviceWorker, (await getStored<FormScript>(serviceWorker, 'formaster:script:s-local'))!, url);
+  expect((await fileInfo(page)).text).toEqual(['LOCAL']);
+
+  await clearFileInfo(page);
+  await runOn(serviceWorker, (await getStored<FormScript>(serviceWorker, 'formaster:script:s-incoming'))!, url);
+  expect((await fileInfo(page)).text).toEqual(['INCOMING']);
 });
 
 test('importing a flow never overwrites a file template another flow already uses', async ({
@@ -182,9 +347,10 @@ test('importing a flow never overwrites a file template another flow already use
   const url = staticServer.url('flow-page-b.html');
   await page.goto(url);
   await runOn(serviceWorker, (await getStored<FormScript>(serviceWorker, 'formaster:script:s-local'))!, url);
-  expect(JSON.parse((await page.locator('#file-info').textContent()) || '{}').name).toBe('existing.png');
+  expect((await fileInfo(page)).name).toBe('existing.png');
+  await clearFileInfo(page);
   await runOn(serviceWorker, importedScript!, url);
-  expect(JSON.parse((await page.locator('#file-info').textContent()) || '{}').name).toBe('imported.png');
+  expect((await fileInfo(page)).name).toBe('imported.png');
 });
 
 test('re-importing the same flow replaces it in place instead of duplicating', async ({ context, extensionId, serviceWorker }) => {

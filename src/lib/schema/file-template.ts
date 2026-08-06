@@ -1,9 +1,37 @@
 import { z } from 'zod';
+import { builtinGeneratorIdSchema } from './script';
 
-/** Where a text layer's rendered text comes from. `flowVariable` resolves against `script.flowId` of whichever script is running the fill. */
+/**
+ * Where a text layer's rendered text comes from — the same four choices a
+ * field has, so a document can carry a freshly generated value and not only
+ * one some field happened to publish.
+ *
+ * `flowVariable` resolves against the `flowId` of whichever script is
+ * running the fill. `builtin` runs against that same run's correlated
+ * identity, so a name printed on a document is the same person the rest of
+ * the flow used. `custom` names a generator on **the script running the
+ * fill** (`FormScript.customGenerators`) — the same list its fields pick
+ * from, so a generator written once serves both a field and a document.
+ *
+ * That last one is a reference across records: a template is global, so a
+ * second script rendering the same template needs a generator under the same
+ * id, or the layer fails. The template editor warns about it while authoring
+ * (the id isn't in the script you opened it from) and the fill reports it as
+ * a field error rather than drawing an empty line.
+ */
 export const textSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('literal'), value: z.string() }),
   z.object({ kind: z.literal('flowVariable'), key: z.string().min(1) }),
+  z.object({
+    kind: z.literal('builtin'),
+    id: builtinGeneratorIdSchema,
+    options: z.record(z.string(), z.unknown()).optional(),
+  }),
+  z.object({
+    kind: z.literal('custom'),
+    generatorId: z.string().min(1),
+    options: z.record(z.string(), z.unknown()).optional(),
+  }),
 ]);
 export type TextSource = z.infer<typeof textSourceSchema>;
 

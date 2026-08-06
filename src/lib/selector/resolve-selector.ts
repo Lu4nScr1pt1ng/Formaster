@@ -1,6 +1,14 @@
 import type { SelectorCandidate } from '../schema/script';
 
-/** Tries each candidate in order, returning the first that resolves to exactly one element. */
+/**
+ * Tries each candidate in order, returning the element the first enabled one
+ * resolves to.
+ *
+ * "Resolves" means `querySelector` semantics — the *first* match, not a
+ * uniqueness check. A candidate matching several elements therefore wins with
+ * its first match rather than being skipped as ambiguous; narrowing it is the
+ * author's call, made by editing or disabling the candidate.
+ */
 export function resolveSelectorCandidates(
   candidates: SelectorCandidate[],
   root: ParentNode = document,

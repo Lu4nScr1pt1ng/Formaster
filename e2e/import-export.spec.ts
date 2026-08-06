@@ -55,8 +55,11 @@ test('import → export → re-import round-trips a script exactly', async ({ op
   await expect(options.locator('input[placeholder="Script name"]')).toHaveValue(original.name);
 
   const downloadPromise = options.waitForEvent('download');
-  // `exact` because the sidebar's folder rows also carry an "Export flow" button.
+  // `exact` because the sidebar's folder rows also carry an "Export flow"
+  // button. The editor's own Export is a menu now — the script-only choice
+  // is the one this round-trip is about.
   await options.getByRole('button', { name: 'Export', exact: true }).click();
+  await options.getByRole('menuitem', { name: /This script only/ }).click();
   const download = await downloadPromise;
   const exportedText = await download.createReadStream().then(
     (stream) =>

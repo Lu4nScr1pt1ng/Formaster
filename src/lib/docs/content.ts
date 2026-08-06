@@ -76,6 +76,9 @@ export const DOC_SECTIONS: DocSection[] = [
       p(
         'Nothing here is global — a login form and a checkout form on the same domain can be two separate scripts, or one, depending on how broad you make the URL pattern. Everything is stored locally (`browser.storage.local`); nothing is ever sent anywhere.',
       ),
+      p(
+        'Every script also sits in a **Flow** — a folder, in the script list. One script gets one automatically and you can ignore it entirely; it only starts mattering when a process spans several pages and a value has to survive the walk from one to the next. See [What a Flow is](#flows-overview) when you get there.',
+      ),
     ],
   },
   {
@@ -90,6 +93,28 @@ export const DOC_SECTIONS: DocSection[] = [
       ]),
       tip(
         'If you want to write a script by hand from scratch (e.g. to generate one programmatically, or restore one from a backup), see [JSON reference](#json-script) for the full annotated shape and a complete example.',
+      ),
+    ],
+  },
+
+  {
+    id: 'unsaved-changes',
+    title: 'Unsaved changes',
+    category: 'Getting started',
+    blocks: [
+      p(
+        'The editor works on its own copy of a script, so nothing reaches storage until you hit **Save**. Anything that would throw that copy away asks first — clicking another script, creating or duplicating one, opening the import dialog, the **Close** button, and closing the tab.',
+      ),
+      list([
+        '**Save & continue** — persists, then does what you asked. If the script can\'t be saved (a blank selector, say), you stay where you are with the error, rather than losing it behind a different script.',
+        '**Discard changes** — throws the edits away and continues.',
+        '**Cancel** — stays put, edits intact. `Esc` and clicking outside do the same.',
+      ]),
+      p(
+        'Editing and then undoing your edit counts as no change at all, so it won\'t prompt. Flow name and description edits count too — they\'re saved with the script.',
+      ),
+      p(
+        'If another tab (or the field picker) changes the script you have open, the editor takes the new version only when you have nothing unsaved; otherwise it keeps your work and says so.',
       ),
     ],
   },
@@ -123,7 +148,10 @@ export const DOC_SECTIONS: DocSection[] = [
     category: 'Mapping fields',
     blocks: [
       p(
-        'Every field stores a **list** of selector candidates, not just one. At fill time, Formaster tries them **in order** and uses the first one that resolves to exactly one element on the page — this is what keeps a mapping alive across a page redesign that only changes some of an element\'s attributes.',
+        'Every field stores a **list** of selector candidates, not just one. At fill time, Formaster tries them **in order** and uses the first one that finds anything on the page — this is what keeps a mapping alive across a page redesign that only changes some of an element\'s attributes.',
+      ),
+      p(
+        'Each candidate resolves with `querySelector` semantics: the **first** element it matches, not a uniqueness check. A candidate that matches three elements is not skipped as ambiguous — it fills the first one. If a field keeps landing on the wrong element, the candidate that won is too broad; tighten it or disable it (see [Editing selectors by hand](#selector-editing)).',
       ),
       table(
         ['Strategy', 'Matches against', 'Notes'],
@@ -141,7 +169,10 @@ export const DOC_SECTIONS: DocSection[] = [
       ),
       h3('id-stability-heuristic', 'The id-stability heuristic'),
       p(
-        'An id like `field-7f3a9c` or React\'s `:r3:` is recognized as auto-generated (it changes every reload) and is **not** offered as a candidate at all — using it would map the field today and silently break it tomorrow. The heuristic: an optional short letters-only prefix, an optional single `-`/`_`/`:` separator, then 6 or more hex digits (`0-9a-f`) with nothing else — so `field-7f3a9c` counts, but `field-x7f3a9c` (the `x` isn\'t a hex digit) or `checkout-form` don\'t.',
+        'An id like `field-7f3a9c` or React\'s `:r3:` is recognized as auto-generated (it changes every reload) and is **not** offered as a candidate at all — using it would map the field today and silently break it tomorrow. The heuristic: an optional letters-only prefix, an optional single `-`/`_`/`:` separator, then 6 or more hex characters (`0-9a-f`) and nothing else — so `field-7f3a9c` counts, but `field-x7f3a9c` (the `x` isn\'t a hex character) or `checkout-form` don\'t.',
+      ),
+      warning(
+        'Hex characters include `a`–`f`, so a genuine word spelled only from those — `facade`, `decade`, `deadbeef` — trips the heuristic and gets skipped even though it is perfectly stable. The field still works (it falls back to `name`/`css`/`xpath`); if you want that id used, add it back by hand as an `id` candidate and move the others out of its way.',
       ),
     ],
   },
@@ -321,7 +352,10 @@ export const DOC_SECTIONS: DocSection[] = [
         '**Credit card pair** — `creditCardNumber` and `creditCardCvc` share one brand, so you never get e.g. a Visa number with a 4-digit Amex-style CVC. `creditCardExpiry` isn\'t part of this — an expiry date has nothing to do with the brand.',
       ]),
       p(
-        'This shared identity is scoped to the script\'s **Flow**, not just the one run — see [What a Flow is](#flows-overview). Re-running the same script (or running a different script in the same Flow) reuses the same identity/address/card instead of picking a new one each time, so a name generated on one page still matches on another. Use **Reset flow** to clear it and get a fresh one.',
+        'This agreement lasts **exactly one run** and is never stored. Re-running the same script generates a new person, address, and card; so does the next script in the same Flow. A Flow quietly remembering a person would be state you never asked it to keep and can\'t see anywhere.',
+      ),
+      p(
+        'To carry a generated value to another page, publish it: give the field a [flow variable](#flow-variables) key, and read it back with `{{key}}` (or `flowVars.key`) on the next page. That way what crosses a page boundary is exactly what you chose, visible in the Flow variables panel — and you can build any correlation you want out of those, including this one.',
       ),
     ],
   },
@@ -351,7 +385,9 @@ export const DOC_SECTIONS: DocSection[] = [
       p(
         'Custom generators run inside a real sandboxed JavaScript interpreter (QuickJS, compiled to WebAssembly) — not `eval`/`new Function`. There\'s no access to the page, the extension\'s storage, `fetch`, or any browser API; see [Custom generator sandbox limits](#sandbox-limits) for exactly what that means in practice.',
       ),
-      p('A generator you create is scoped to the script it was created in — assign it to as many fields on that script as you like from the "Custom script" generator kind dropdown, which also lets you jump straight to its code with the pencil icon.'),
+      p(
+        'A generator you create is scoped to the script it was created in — assign it to as many of that script\'s fields as you like from the "Custom script" generator kind dropdown, which also lets you jump straight to its code with the pencil icon. A [File Template](#file-templates) text layer can name one too, and it resolves against whichever script is running the fill, so the same generator can produce a field\'s value and a line on a generated document.',
+      ),
     ],
   },
   {
@@ -408,6 +444,9 @@ return prefix + "_" + n;`,
       p(
         'A broken earlier field (bad selector, throwing generator) doesn\'t block previewing a later one — it\'s just absent from `fields` for that preview, same as it would be absent at real fill time.',
       ),
+      p(
+        'On a `file` field, Preview renders the document for real — through the same path a fill uses, template generators included — and reports the resulting filename as `File: …`. A layer that can\'t resolve shows its error here instead of at fill time.',
+      ),
       warning(
         'One difference from a real run: preview does **not** honor an earlier field\'s `options.skip`. A skipped field never runs (and never populates `fields`) once you actually click **Run** — but while previewing, its value still gets resolved and made available to anything below it. If a generator reads `fields.xyz` and that field is skipped, preview can show a value where a real run would give `undefined`.',
       ),
@@ -417,7 +456,7 @@ return prefix + "_" + n;`,
   // ── Referencing other fields ────────────────────────────────────────
   {
     id: 'fields-object',
-    title: 'The `fields` object',
+    title: 'The fields object',
     category: 'Referencing other fields',
     blocks: [
       p(
@@ -461,6 +500,7 @@ return prefix + "_" + n;`,
         'Only fields **above** the current one in the `steps` list are available — `fields` is built up top to bottom as the run progresses, so a generator can never see a field that comes later, no matter how the page itself is laid out.',
         'A field whose `options.skip` is `true` never runs, so it never populates `fields` either.',
         'A field that fails — its selector doesn\'t resolve, or its own generator throws — also doesn\'t populate `fields`. Reading a key that was never set just gives you JavaScript\'s `undefined`, not an error, so guard with something like `fields.company || "N/A"` if an earlier field might legitimately be missing.',
+        'A `file` field never populates `fields` either, even when it fills successfully: its value is a binary `File`, and only a string, number, or boolean can cross into the generator sandbox (see [Generating a file](#file-generator-kind)).',
       ]),
       tip(
         'If a generator needs to read another field, move that field above it in the step list first, using its row\'s up/down arrows — same as reordering delays and waits. (Dragging is for the script list in the sidebar, not for steps.)',
@@ -475,18 +515,16 @@ return prefix + "_" + n;`,
     category: 'Flows & generated files',
     blocks: [
       p(
-        'Every script belongs to exactly one **Flow** (`FormScript.flowId`) — a lightweight named container (`{ id, name, description?, createdAt, updatedAt }`) with no pre-declared list of fields or variables. A standalone one-off script still gets its own, single-script Flow automatically; you never have to think about Flows at all unless you actually need two scripts to share something.',
+        'The case Flows exist for: page 1 of a multi-step process asks for a name; page 2 — a different form entirely — asks for that same name again, or for an uploaded document with it printed on top. Putting both scripts in one Flow is what gives page 2 somewhere to read the name from; page 1 publishing it under a key is what puts it there. There is a step-by-step of exactly that in [Two pages, one identity, and a generated document](#walkthrough-flow).',
       ),
       p(
-        'The motivating case: page 1 of a multi-step process asks for a name; page 2 — a different form entirely — asks for an uploaded document with that same name printed on it, or just asks for the same email again. Putting both scripts in the same Flow is what makes that possible, without configuring field-by-field mappings by hand.',
+        'Mechanically a Flow is thin: every script belongs to exactly one (`FormScript.flowId`), and the Flow itself is just a named container (`{ id, name, description?, createdAt, updatedAt }`) with no pre-declared list of fields or variables. A standalone one-off script still gets its own, single-script Flow automatically, so you never have to think about them until two scripts genuinely need to share something.',
       ),
-      p('A Flow enables two independent kinds of sharing between scripts, covered in the next two sections:'),
-      list([
-        '**Automatic identity correlation** — name/email/address/credit card, zero configuration. See [Correlated generators](#shared-identity).',
-        '**Named flow variables** — an explicit, opt-in `key` → value you choose per field. See [Named flow variables](#flow-variables).',
-      ]),
       p(
-        'In the script editor, a "Flow" block at the top of the page lets you rename the current Flow, switch to a different existing one, or start a new one ("+ New flow…") from a searchable dropdown — moving a script to another Flow later is just picking a different entry there. If the Flow has more than one script, the block also lists its sibling scripts (with an "Open" link to jump straight to one) and a collapsible "Flow variables" panel.',
+        'Exactly one thing crosses from one script to the next: **named flow variables** — an explicit, opt-in `key` → value you choose per field (see [Named flow variables](#flow-variables)). Nothing is shared implicitly. In particular the identity that keeps a single run\'s name/email/address agreeing with each other ([Correlated generators](#shared-identity)) is per-run and never persisted; if page 2 needs the name from page 1, page 1 publishes it.',
+      ),
+      p(
+        'In the script editor, a "Flow" block at the top of the page lets you rename the current Flow, switch to a different existing one, or start a new one ("+ New flow…") from a searchable dropdown — moving a script to another Flow later is just picking a different entry there. When the Flow has more than one script, the block also lists the siblings, with an "Open" link to jump straight to one. A collapsible "Flow variables" panel appears as soon as there is anything to show — a sibling script, a declared key, or a value some run already published.',
       ),
       p(
         'In the script list, each Flow is a folder holding its scripts — click it to collapse, and use the download icon on its row to [export the whole Flow](#flow-export-import) as one file.',
@@ -515,7 +553,7 @@ return prefix + "_" + n;`,
       ),
       code('return "REF-" + String(flowVars.email || "").split("@")[0].toUpperCase();', 'js'),
       p(
-        '**`flowVars` vs. `fields`** — both let a generator read another value, and they are not interchangeable: `fields` is scoped to *this run of this script* and keyed by a field\'s camelCased label (see [The `fields` object](#fields-object)), while `flowVars` is scoped to the whole *Flow*, keyed by whatever string you typed, and survives across pages and runs until the Flow is reset. Reach for `fields` within one page, `flowVars` across pages.',
+        '**`flowVars` vs. `fields`** — both let a generator read another value, and they are not interchangeable: `fields` is scoped to *this run of this script* and keyed by a field\'s camelCased label (see [The `fields` object](#fields-object)), while `flowVars` is scoped to the whole *Flow*, keyed by whatever string you typed, and survives across pages and runs until the Flow is [reset](#reset-flow). Reach for `fields` within one page, `flowVars` across pages.',
       ),
       p(
         'You rarely have to type a key twice: anywhere a key is expected, the field suggests the ones this Flow already has — and in the free-text fields that take `{{key}}` (a fixed value, a template\'s literal layer, an output filename), typing `{{` opens the same list and picking one completes the placeholder where your cursor is.',
@@ -525,6 +563,13 @@ return prefix + "_" + n;`,
       ),
       p(
         'When a read finds nothing published, the field fails with a clear message — "Flow variable \\"…\\" is not set yet — run the script that saves it first" — visible in the script editor\'s preview and in the popup\'s expandable run result, never as a silently empty value.',
+      ),
+      h3('reset-flow', 'Reset flow'),
+      p(
+        '**Reset flow** — the **Reset** button in the script editor\'s Flow block, and the matching button next to a script in the popup — discards every value that Flow has published, putting it back to how it was before anything ran. Published values are the whole of a Flow\'s runtime state, so that is all there is to clear; a fresh run afterwards starts from nothing, and a script reading a key errors until something publishes it again.',
+      ),
+      p(
+        'Values are never cleared on their own — not on a timer, not on browser restart, not on import. Starting a new pass through a multi-page process is an explicit act, because the alternative (guessing when a process ended) would silently drop a value mid-flow.',
       ),
       warning(
         'Because `{{…}}` is a placeholder in a **fixed value** (and in a File Template\'s literal layers and `outputFilename`), text that needs a literal `{{` — rare, but e.g. filling a form with template syntax in it — will fail instead of being used verbatim. Use a custom generator returning the literal string in that case.',
@@ -547,20 +592,31 @@ return prefix + "_" + n;`,
         ],
       ),
       p(
-        'Each text layer positions one string at `x`/`y` with a font size, weight, color, and alignment (and, for `pdf` templates with more than one page, a `pageIndex`). A layer\'s text comes from one of two sources:',
+        'Each text layer positions one string at `x`/`y` with a font size, weight, color, and alignment (and, for `pdf` templates with more than one page, a `pageIndex`). A layer\'s text comes from one of the same four sources a form field uses:',
       ),
       list([
-        '`{ kind: "flowVariable", key: "…" }` — one whole layer, one flow variable, resolved against the running script\'s Flow at render time (see [Named flow variables](#flow-variables)); errors clearly if nothing has published that key yet.',
         '`{ kind: "literal", value: "…" }` — a fixed string, which may also splice variables in with `{{key}}`: `Nome: {{nome}} {{sobrenome}}`. This is the only way to get more than one value onto a single line, since a `flowVariable` source carries exactly one.',
+        '`{ kind: "flowVariable", key: "…" }` — one whole layer, one flow variable, resolved against the running script\'s Flow at render time (see [Named flow variables](#flow-variables)); errors clearly if nothing has published that key yet.',
+        '`{ kind: "builtin", id: "…", options: { … } }` — any [built-in generator](#builtin-generators), with its own options. It runs against the same [correlated](#shared-identity) run the fields around it do, so a name printed on a document is the same person the form was filled with — and a document can carry a value no field ever asked for.',
+        '`{ kind: "custom", generatorId: "…", options: { … } }` — a custom script, with `helpers`, `options`, `fields` (the values filled so far) and `flowVars` in scope, exactly as in a field\'s [custom generator](#custom-generators).',
       ]),
       p(
-        '`outputFilename` accepts the same `{{key}}` placeholders — e.g. `comprovante-{{nome}}-{{sobrenome}}.png`.',
+        'A `custom` layer names a generator on **the script running the fill** — the same list its fields pick from, so a generator written once serves a field and a document alike. The template editor shows those generators under "Custom generators" and lets you write them in place; they save with the script, not with the template.',
+      ),
+      warning(
+        'That reference crosses records. A template is global, so rendering it from a *different* script means that script needs a generator under the same id, or the layer errors. The editor flags a layer whose generator isn\'t on the script you opened it from, and a fill reports it as a field error rather than drawing an empty line. The upside is the other half of it: two scripts can share one template as a layout and each fill it from their own generator.',
+      ),
+      p(
+        '`outputFilename` accepts the same `{{key}}` placeholders — e.g. `comprovante-{{nome}}-{{sobrenome}}.png`. It takes flow variables only, not generator output.',
       ),
       tip(
         'Text does not wrap or shrink to fit on its own — a line longer than the canvas is simply clipped at the edge. Set a layer\'s **Max width** to have the renderer squeeze that line into the space you give it instead.',
       ),
       p(
-        'The template editor shows a live canvas preview for `png` templates as you edit. `pdf` templates skip a thumbnail (not worth the render cost on every keystroke) in favor of an "Open preview" button that renders a real PDF — through the same `pdf-lib` path a real fill uses — against a throwaway scratch Flow where every referenced key is seeded with its own `{{key}}` placeholder, and opens it in a new tab.',
+        'Every layer has its own **Preview** button, which resolves just that layer and shows the result — the only way to check a generator written here without saving the template, attaching it to a field and running a whole fill. Flow variables have no real Flow to resolve against while authoring, so they stand in for themselves as `{{key}}`; generators run for real.',
+      ),
+      p(
+        'The template editor also shows a live canvas preview for `png` templates as you edit; there, a layer that isn\'t fixed text draws a placeholder (`{{key}}`, or `‹Full name›` for a generator) rather than a value, since re-rolling a generator on every keystroke would reshuffle the drawing under your cursor. `pdf` templates skip the thumbnail entirely in favor of an "Open preview" button that renders a real PDF — through the same `pdf-lib` path a real fill uses — and opens it in a new tab.',
       ),
     ],
   },
@@ -572,8 +628,13 @@ return prefix + "_" + n;`,
       p(
         'A field with `elementType: "file"` (an `<input type="file">`, detected automatically by the picker) only ever uses the `"file"` generator kind — `{ kind: "file", templateId: "<a File Template id>" }`. Every other generator kind is hidden from that field\'s picker entirely, since none of them can produce a `File`; the picker instead goes straight to a searchable list of your File Templates, with a "+ New template…" entry that opens the template editor and assigns the result back to this field once you save it.',
       ),
+      p('At fill time this happens in two stages, because no single place can do both:'),
+      list([
+        '**Every text layer is resolved to a finished string first** — including a `custom` layer, which runs in the ordinary generator sandbox (QuickJS, in the background service worker) exactly as a field\'s custom generator does.',
+        '**Then the file is drawn**, never inside that sandbox: it has no Canvas and can only return a string, number, or boolean. A `png` is drawn on a real `<canvas>` in the content script; a `pdf` is handed to the background worker, which is the only context that can lazily `import()` pdf-lib without inlining it into every page\'s content script.',
+      ]),
       p(
-        'At fill time this renders in the content script — never inside the custom-generator sandbox, which has no Canvas/DOM and can only return a string, number, or boolean — and assigns the resulting `File` to the input via a synthetic `DataTransfer` (`input.files` has no public setter; this is the only way to assign it programmatically). Rendering gets its own 8-second timeout, separate from the custom-generator sandbox\'s own watchdog, since it runs as real DOM/WASM code rather than inside that VM.',
+        'The resulting `File` is assigned to the input via a synthetic `DataTransfer` (`input.files` has no public setter; this is the only way to assign it programmatically). The whole thing — layer resolution included — gets its own 8-second timeout, separate from the sandbox\'s own watchdog, since most of it runs as real DOM/WASM code rather than inside that VM.',
       ),
       warning(
         'Some sites reject a non-trusted `change` event on a file input outright — the same limitation every other synthetic fill in this extension already has, not something specific to generated files.',
@@ -591,7 +652,7 @@ return prefix + "_" + n;`,
       ),
       p('Scripts can be rearranged, which matters once a Flow is the several pages of one process and you want them in the order you actually walk them:'),
       list([
-        '**Drag** a script up or down inside its folder to reorder it, or onto another folder to move it there — which changes the script\'s Flow, so it starts sharing variables and identity with that Flow instead.',
+        '**Drag** a script up or down inside its folder to reorder it, or onto another folder to move it there — which changes the script\'s Flow, so it reads and publishes that Flow\'s variables instead.',
         '**Keyboard**: focus a script and hold `Alt` with `↑`/`↓` to reorder it, or `←`/`→` to move it to the previous/next folder. Dragging is unusable without a mouse, so this is the same operation, not a lesser one.',
       ]),
       p(
@@ -604,27 +665,6 @@ return prefix + "_" + n;`,
     ],
   },
   {
-    id: 'unsaved-changes',
-    title: 'Unsaved changes',
-    category: 'Flows & generated files',
-    blocks: [
-      p(
-        'The editor works on its own copy of a script, so nothing reaches storage until you hit **Save**. Anything that would throw that copy away asks first — clicking another script, creating or duplicating one, opening the import dialog, the **Close** button, and closing the tab.',
-      ),
-      list([
-        '**Save & continue** — persists, then does what you asked. If the script can\'t be saved (a blank selector, say), you stay where you are with the error, rather than losing it behind a different script.',
-        '**Discard changes** — throws the edits away and continues.',
-        '**Cancel** — stays put, edits intact. `Esc` and clicking outside do the same.',
-      ]),
-      p(
-        'Editing and then undoing your edit counts as no change at all, so it won\'t prompt. Flow name and description edits count too — they\'re saved with the script.',
-      ),
-      p(
-        'If another tab (or the field picker) changes the script you have open, the editor takes the new version only when you have nothing unsaved; otherwise it keeps your work and says so.',
-      ),
-    ],
-  },
-  {
     id: 'flow-export-import',
     title: 'Exporting and importing a Flow',
     category: 'Flows & generated files',
@@ -632,7 +672,7 @@ return prefix + "_" + n;`,
       p(
         'A script on its own is no longer a complete thing to hand around: it names a Flow, and its file fields name a File Template — both records that live outside the script. Exporting just the script leaves both references dangling wherever it lands. **Export flow** packages the whole thing instead.',
       ),
-      p('Hover a Flow\'s folder in the script list and click the download icon. The file you get contains:'),
+      p('There are two ways to reach it: hover a Flow\'s folder in the script list and click the download icon, or open any script in that Flow and pick **Whole flow** from the editor\'s **Export** menu. The same menu\'s **This script only** writes the bare script, which is still the right file when whoever receives it already has the Flow and templates. The file a whole-flow export gives you contains:'),
       list([
         'the **Flow** record itself (name, description),',
         '**every script** in that Flow,',
@@ -645,10 +685,10 @@ return prefix + "_" + n;`,
         'A File Template is **global** — several Flows can share one. So an import never overwrites a template that already exists locally: if the content is identical it just reuses yours, and if it differs the imported one comes in under a new id named "… (imported)", with the bundle\'s fields repointed at it. A Flow you import can never change the documents another Flow generates.',
       ),
       p(
-        'Importing a Flow whose id already exists asks first, and lists which scripts get overwritten. What it does **not** touch is that Flow\'s runtime state: published [flow variables](#flow-variables) and the correlated identity are deliberately left out of the file (they\'re generated data, not definition) and left alone on import — so the first run after an import may still read values from before it. Use **Reset flow** for a clean start.',
+        'Importing a Flow whose id already exists asks first, and lists which scripts get overwritten. What it does **not** touch is that Flow\'s runtime state: published [flow variables](#flow-variables) are deliberately left out of the file (they\'re generated data, not definition) and left alone on import — so the first run after an import may still read values from before it. Use [**Reset flow**](#reset-flow) for a clean start.',
       ),
       tip(
-        'Export reads the **last saved** state, since the folder lists what\'s saved. If you\'ve just edited a script or the Flow name, hit Save before exporting.',
+        'A whole-flow export reads the **last saved** state — it has to, since it collects records the editor you\'re in doesn\'t hold. If you\'ve just edited a script or the Flow name, hit Save before exporting.',
       ),
     ],
   },
@@ -767,7 +807,7 @@ return prefix + "_" + n;`,
         ],
       ),
       p(
-        '`field.options` is optional, and none of its keys currently have a dedicated UI control in the field row itself — `radioValue`/`skip` are set from the JSON side panel (or a hand-written import file), while `saveAsFlowVariable` has its own "Save as flow variable" toggle right below the generator picker:',
+        '`field.options` is optional. `saveAsFlowVariable` has its own "Save as flow variable" control right below the generator picker; `radioValue` and `skip` have no widget yet and are set from the JSON side panel (or a hand-written import file):',
       ),
       list([
         '`radioValue` — for `elementType: "radio"` fields, which `value` attribute in the radio group to check. If omitted, the generated/fixed value itself is used, so most radio fields don\'t need this at all.',
@@ -875,13 +915,44 @@ return prefix + "_" + n;`,
           'Set Confirm password → **Custom script**, and write `return fields.password;` (or `fields.senha` if you labeled the field "Senha" instead — see [How field keys are derived](#fields-key-rule)).',
           'The referral code field only enables after email lookup finishes on this particular site — add a **conditional wait** step right before it, targeting the same selector, condition `enabled`, and drop the timeout to whatever\'s reasonable for that lookup.',
           'Set Referral code → **Custom script**: `return "REF-" + String(fields.email).split("@")[0].toUpperCase();`.',
-          'Reorder if needed with the up/down arrows — the wait step must sit immediately above the referral code field, and email must be above both the referral code and confirm-password fields for their generators to see it.',
+          'Reorder if needed with the up/down arrows: the wait step must sit immediately above the referral code field, email above the referral code field, and password above confirm-password — a generator only ever sees fields that ran before it.',
           'Hit **Preview value** on the referral code field to confirm it reads a real email before ever running it against the live page.',
           'Save, then **Run** from the popup on that page.',
         ],
         true,
       ),
       p('This exact pattern (identity fields, a wait-gated field, a field referencing an earlier one) is also what the bundled Playground\'s example script demonstrates — open it from the script library if you\'d rather tinker with a live, running version than read about one.'),
+    ],
+  },
+  {
+    id: 'walkthrough-flow',
+    title: 'Two pages, one identity, and a generated document',
+    category: 'Worked example',
+    blocks: [
+      p(
+        'The other walkthrough stays on one page. This one is the case Flows and File Templates exist for: page 1 asks for a name, page 2 — a different form, on a different URL — wants an uploaded document with that same name printed on it. Nothing is wired field-to-field; page 1 publishes a value, page 2 reads it.',
+      ),
+      list(
+        [
+          'On page 1, map the fields and set generators as usual. On the name field, click **Save as flow variable** under the generator picker and name the key `fullName`. That is the entire sharing mechanism: a field that publishes, and a name to publish it under.',
+          '**Save.** A new script gets its own Flow, named after the script — rename that Flow after the *process* instead ("Signup", say) in the **Flow** block at the top of the editor.',
+          'Go to page 2 and map its fields. You get a second script in its **own** new Flow, which is not what you want — so open the Flow dropdown at the top of its editor and pick "Signup". The two scripts now share a Flow, and each editor starts listing the other as a sibling.',
+          'Page 2\'s upload input was detected as a `file` field, so its generator picker offers File Templates instead of the usual generator kinds. There are none yet, so pick **+ New template…**.',
+          'In the template editor: give it a name, leave the format on **PNG image**, set the canvas size, then **Add layer**. Set that layer\'s source to **Flow variable** and type `fullName` — autocomplete offers it, because page 1 already declares it. Set **Output filename** to `documento-{{fullName}}.png` if you want the name in the filename too.',
+          'Click the layer\'s **Preview** to watch it resolve, then **Save template** — you land back on the field with the new template already selected. **Save** the script.',
+          'Run page 1\'s script, navigate to page 2, run page 2\'s. The upload input now holds a real PNG carrying the name page 1 generated.',
+        ],
+        true,
+      ),
+      tip(
+        'Run page 2 first and it fails on purpose: *Flow variable "fullName" is not set yet — run the script that saves it first*. A value that never arrived is an error, never a document with a blank line where the name should have been.',
+      ),
+      p(
+        'Doing the process again for a different person is what [**Reset flow**](#reset-flow) is for — published values are deliberately kept until you say otherwise, so a second run would otherwise reuse the first person\'s name.',
+      ),
+      p(
+        'If the document needs a value nobody types — a certificate number, a CPF, today\'s date — that layer needs page 1 for nothing at all: set its source to a built-in generator or a custom script and it produces its own value at render time. A template can mix the two freely; see [File Templates](#file-templates).',
+      ),
     ],
   },
 
@@ -897,7 +968,7 @@ return prefix + "_" + n;`,
       list([
         'Only **built-in** generators get auto-detected this way — there\'s no menu to pick a specific generator, use a fixed value, or run a custom generator. For anything more than a best guess, map the field into a real script instead.',
         'Nothing detected? A small badge near the field says "Input type not identified" instead of guessing wrong — better than silently filling in nonsense.',
-        'Each use is independent: unlike a script run, it doesn\'t share a [correlated](#shared-identity) identity/address/card with anything else, even other fields filled this same way moments apart.',
+        'Each use is independent: it doesn\'t share a [correlated](#shared-identity) identity/address/card with anything else, even other fields filled this same way moments apart.',
         'Works on the bundled Playground\'s demo form too, not just real sites — content scripts don\'t normally run on the extension\'s own pages, so the Playground wires this up itself.',
       ]),
     ],
@@ -933,7 +1004,7 @@ return prefix + "_" + n;`,
         '**One specific `options.<key>` is `undefined` even though I gave it a `default`.** The declared `default` only seeds what the field\'s control shows on screen — it\'s never auto-filled into `options` at run time. If that particular control was never touched, the key is simply missing. Always code your own fallback (`options.digits || 4`), never assume an absent key means the declared default.',
         '**A radio field checks the wrong option.** Set `field.options.radioValue` to the exact `value` attribute of the option you want checked — there\'s no UI control for this yet, only the JSON panel. See [Field step shape](#json-field-step).',
         '**"N of M filled" in the popup, and M is bigger than N.** Click that text — when it shows fewer filled than total, it becomes a small expandable list naming which field failed and why (element not found, or a generator/render error message). A missing flow variable ("run the script that saves it first") is the most common one in a multi-script Flow — see [Named flow variables](#flow-variables).',
-        '**Re-running a script gives the same name/email as last time, not a fresh one.** Expected since identity correlation now persists per Flow instead of resetting every run — see [Correlated generators](#shared-identity). Use **Reset flow** (in the script editor\'s Flow panel, or next to a script in the popup once its Flow has more than one script) to clear it.',
+        '**Page 2 generates a different person than page 1 did.** Expected: correlated generators agree within one run only, and nothing is carried over implicitly (see [Correlated generators](#shared-identity)). Publish the value on page 1 as a [flow variable](#flow-variables) and read it back with `{{key}}` on page 2.',
       ]),
     ],
   },
@@ -947,7 +1018,7 @@ return prefix + "_" + n;`,
       ),
       list([
         'No access to the page, the DOM, `fetch`/`XMLHttpRequest`, `browser.*` APIs, cookies, or storage of any kind. The only inputs are `helpers`, `options`, `fields`, and `flowVars` — note that `flowVars` is a plain snapshot resolved *outside* the sandbox and handed in as data, not a live storage handle: writing to it does nothing, and publishing a variable is only ever done by a field\'s "Save as flow variable" option.',
-        'A **3-second** execution timeout — code that runs long (an accidental infinite loop, a huge computation) is forcibly interrupted and the field is reported as an error rather than hanging the fill.',
+        'A **3-second** execution timeout — code that runs long (an accidental infinite loop, a huge computation) is forcibly interrupted and the field is reported as an error rather than hanging the fill. There are matching ceilings on memory (**16 MB**) and call stack (**1 MB**), since a runaway allocation or an infinite recursion can exhaust the host well before a wall-clock deadline fires.',
         'The return value must be a plain `string`, `number`, or `boolean`. Returning an object, array, `undefined`, or a `Promise` throws — generators are synchronous, single-value producers by design.',
         'No arbitrary shared state between fields: two custom generators can\'t communicate through some variable of their own. The channels are `fields` (one reading a value an earlier one already produced), `flowVars` (a value some field explicitly published for the whole Flow — see [Named flow variables](#flow-variables)), and, indirectly, calling the same correlated `helpers.*` function that other fields also call — e.g. two different custom generators both calling `helpers.email()` still get the same shared identity as each other and as any built-in `email`/`firstName`/… field on the same run (see [Correlated generators](#shared-identity)).',
       ]),
