@@ -342,6 +342,9 @@ export const DOC_SECTIONS: DocSection[] = [
         '**`flowVars`** — every named flow variable published so far in this script\'s Flow, keyed by the exact string it was saved under, including ones published by an earlier script on a different page (see [Named flow variables](#flow-variables)).',
       ]),
       code('return fields.firstName + "." + fields.lastName + "@example.com";', 'js'),
+      p(
+        'The code editor completes all four as you type: `helpers.` lists every built-in generator, `fields.` the labels of this script\'s own fields already camelCased for you, `flowVars.` the flow\'s keys with their current value beside them, and `options.` whatever knobs this generator declares. These sit alongside the editor\'s ordinary JavaScript completions rather than replacing them.',
+      ),
       p('The function must `return` a string, number, or boolean — returning anything else (an object, `undefined`, a Promise) throws an error that shows up right in the field\'s preview.'),
       p('New fields default to this generator when you add one:'),
       code('return "value";', 'js'),

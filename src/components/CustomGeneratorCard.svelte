@@ -2,7 +2,7 @@
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon';
   import SlidersHorizontalIcon from 'phosphor-svelte/lib/SlidersHorizontalIcon';
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
-  import CodeEditor from './CodeEditor.svelte';
+  import CodeEditor, { type MemberCompletion } from './CodeEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import { createConfirmGate } from '../lib/confirm-gate.svelte';
   import type { CustomGenerator } from '../lib/schema/script';
@@ -15,11 +15,20 @@
     onToggleOptions: () => void;
     onSetOptionsSchemaText: (text: string) => void;
     onRemove: () => void;
+    /** What's in scope for generator code — `helpers`/`fields`/`flowVars`, from the script around this card. */
+    memberCompletions?: Record<string, MemberCompletion[]>;
   }
 
-  let { generator, expanded, optionsError, onToggleOptions, onSetOptionsSchemaText, onRemove }: Props = $props();
+  let { generator, expanded, optionsError, onToggleOptions, onSetOptionsSchemaText, onRemove, memberCompletions }: Props = $props();
 
   const removeGate = createConfirmGate();
+
+  // `options` is the one scope object that's specific to this generator, so
+  // it's built here from its own declared knobs rather than passed in.
+  const completions = $derived({
+    ...memberCompletions,
+    options: generator.optionsSchema.map((option) => ({ label: option.key, detail: option.label })),
+  });
 </script>
 
 <div id={`generator-${generator.id}`} class="rounded-xl bg-surface p-3">
@@ -51,7 +60,13 @@
     <code class="font-mono text-ink-2">fields</code> keys are each earlier field's <strong class="text-ink-2">label</strong>
     camelCased — "Senha" → <code class="font-mono text-ink-2">fields.senha</code>.
   </p>
-  <CodeEditor value={generator.code} language="javascript" onChange={(value) => (generator.code = value)} minHeight="5rem" />
+  <CodeEditor
+    value={generator.code}
+    language="javascript"
+    onChange={(value) => (generator.code = value)}
+    minHeight="5rem"
+    memberCompletions={completions}
+  />
 
   <button
     type="button"

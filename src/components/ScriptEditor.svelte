@@ -29,7 +29,7 @@
   import { fieldContextKey, type FieldValueContext, type FlowVariables } from '../lib/filler/fill-script';
   import { collectSavedFlowVariableKeys } from '../lib/flow-variable-keys';
   import { interpolateFlowVariables } from '../lib/flow-variables';
-  import { runBuiltinGenerator, type GeneratorRunContext } from '../lib/generators';
+  import { BUILTIN_GENERATOR_LABELS, runBuiltinGenerator, type GeneratorRunContext } from '../lib/generators';
   import { renderFile } from '../lib/generators/file-generators';
   import { runCustomCode } from '../lib/generators/quickjs-runner';
   import type { RuntimeMessage } from '../lib/messaging/types';
@@ -39,6 +39,7 @@
     formScriptSchema,
     formatValidationError,
     generatorOptionFieldSchema,
+    type BuiltinGeneratorId,
     type CustomGenerator,
     type DelayStep,
     type FieldMapping,
@@ -204,6 +205,25 @@
    * keys is the point: it's how "this variable exists but nothing has filled
    * it yet" becomes visible before a run rather than as an error during one.
    */
+  /**
+   * What a custom generator gets in scope, as completions for its code
+   * editor. `options` isn't here — it's per-generator, so the card that
+   * renders one adds its own from its `optionsSchema`.
+   */
+  const generatorCompletions = $derived({
+    helpers: (Object.entries(BUILTIN_GENERATOR_LABELS) as [BuiltinGeneratorId, string][]).map(([id, label]) => ({
+      label: `${id}()`,
+      detail: label,
+    })),
+    fields: draft.steps
+      .filter((step) => step.type === 'field')
+      .map((step) => ({
+        label: fieldContextKey((step as { field: FieldMapping }).field),
+        detail: (step as { field: FieldMapping }).field.label || (step as { field: FieldMapping }).field.elementType,
+      })),
+    flowVars: flowVariableKeys.map((key) => ({ label: key, detail: flowValues[key]?.value || 'not filled yet' })),
+  });
+
   const flowVariableRows = $derived(
     [...new Set([...flowVariableKeys, ...Object.keys(flowValues)])].sort().map((key) => ({
       key,
@@ -1045,6 +1065,7 @@
             {#each draft.customGenerators as generator (generator.id)}
               <CustomGeneratorCard
                 {generator}
+                memberCompletions={generatorCompletions}
                 expanded={expandedGeneratorOptions.has(generator.id)}
                 optionsError={generatorOptionsError[generator.id] ?? null}
                 onToggleOptions={() => toggleGeneratorOptions(generator.id)}
