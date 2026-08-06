@@ -25,6 +25,17 @@ export function createConfirmGate<T = true>() {
       action(pending);
       pending = null;
     },
+    /**
+     * For an action that can fail — the dialog stays open unless it resolves
+     * `true`. "Save & continue" needs this: a script that fails validation
+     * has to leave the user where they are, with the toast explaining why,
+     * rather than dismissing as if it had worked.
+     */
+    async confirmAsync(action: (value: T) => Promise<boolean>): Promise<void> {
+      if (pending === null) return;
+      const value = pending;
+      if (await action(value)) pending = null;
+    },
     cancel(): void {
       pending = null;
     },

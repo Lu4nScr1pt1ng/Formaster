@@ -97,7 +97,7 @@ test('moving a script to another Flow moves it between folders immediately', asy
   await expect(options.locator('nav [role="group"] button', { hasText: 'Traveller' })).toBeVisible();
 });
 
-test('abandoning an unsaved rename restores the stored name in the sidebar', async ({ context, extensionId, serviceWorker }) => {
+test('discarding an unsaved rename restores the stored name in the sidebar', async ({ context, extensionId, serviceWorker }) => {
   await seed(serviceWorker, {
     flows: [flow('f1', 'Flow')],
     scripts: [textScript('s1', 'f1', 'Original'), textScript('s2', 'f1', 'Other')],
@@ -107,9 +107,14 @@ test('abandoning an unsaved rename restores the stored name in the sidebar', asy
   await options.locator('input[placeholder="Script name"]').fill('Discarded draft');
   await expect(options.locator('nav [role="group"] button', { hasText: 'Discarded draft' })).toBeVisible();
 
-  // Switching scripts throws the draft away, so the sidebar must stop
-  // showing it rather than keep a name that no longer exists anywhere.
+  // Switching scripts would throw the draft away, so it asks first.
   await options.locator('nav [role="group"] button', { hasText: 'Other' }).click();
+  await expect(options.locator('text=Unsaved changes')).toBeVisible();
+  await options.getByRole('button', { name: 'Discard changes' }).click();
+
+  // Discarded for real: the sidebar stops showing a name that no longer
+  // exists anywhere, and the switch goes through.
   await expect(options.locator('nav [role="group"] button', { hasText: 'Original' })).toBeVisible();
   await expect(options.locator('nav [role="group"] button', { hasText: 'Discarded draft' })).toHaveCount(0);
+  await expect(options.locator('input[placeholder="Script name"]')).toHaveValue('Other');
 });

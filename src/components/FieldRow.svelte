@@ -1,5 +1,6 @@
 <script lang="ts">
   import CodeIcon from 'phosphor-svelte/lib/CodeIcon';
+  import FlagIcon from 'phosphor-svelte/lib/FlagIcon';
   import CopySimpleIcon from 'phosphor-svelte/lib/CopySimpleIcon';
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon';
   import PlayIcon from 'phosphor-svelte/lib/PlayIcon';
@@ -7,6 +8,7 @@
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon';
   import XIcon from 'phosphor-svelte/lib/XIcon';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import FlowVariableInput from './FlowVariableInput.svelte';
   import GeneratorOptionsEditor from './GeneratorOptionsEditor.svelte';
   import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
   import SelectorCandidateEditor from './SelectorCandidateEditor.svelte';
@@ -81,11 +83,6 @@
     onEditFileTemplate,
   }: Props = $props();
 
-  // `field.id` is stable for this component instance's whole life — the
-  // `#each` in ScriptEditor keys FieldRow by field id, so a different id
-  // means a fresh instance, never a reassignment of this one's `field` prop.
-  // svelte-ignore state_referenced_locally
-  const flowVariableKeysDatalistId = `flow-var-keys-${field.id}`;
 
   let previewValue = $state<string | null>(null);
   let previewError = $state(false);
@@ -305,12 +302,14 @@
           />
         {/if}
       {:else if field.generator.kind === 'fixed'}
-        <input
-          class="rounded-md border border-hair bg-canvas px-2 py-1 text-xs text-ink-1 outline-none focus:border-accent-500"
-          value={field.generator.value}
+        <FlowVariableInput
+          mode="template"
+          keys={flowVariableKeys}
+          value={String(field.generator.value)}
+          onInput={setFixedValue}
+          class="w-full rounded-md border border-hair bg-canvas px-2 py-1 text-xs text-ink-1 outline-none focus:border-accent-500"
           placeholder="Value, or {'{{flowVariable}}'}"
           title="A {'{{key}}'} placeholder is replaced with that flow variable's value at fill time."
-          oninput={(event) => setFixedValue((event.currentTarget as HTMLInputElement).value)}
         />
       {:else if field.generator.kind === 'custom'}
         <SearchableSelect
@@ -344,32 +343,47 @@
 
   <div class="mt-2 flex flex-wrap items-center gap-1.5">
     {#if field.options?.saveAsFlowVariable}
-      <span class="text-[11px] text-ink-3">Save as flow variable:</span>
-      <input
-        class="w-36 rounded-md border border-hair bg-canvas px-1.5 py-0.5 font-mono text-xs text-ink-1 outline-none focus:border-accent-500"
-        list={flowVariableKeysDatalistId}
-        placeholder="key"
-        value={field.options.saveAsFlowVariable.key}
-        oninput={(event) => setSaveAsFlowVariableKey((event.currentTarget as HTMLInputElement).value)}
-      />
-      <datalist id={flowVariableKeysDatalistId}>
-        {#each flowVariableKeys as key (key)}
-          <option value={key}></option>
-        {/each}
-      </datalist>
-      <button
-        type="button"
-        class="rounded-md p-1 text-ink-3 hover:bg-red-500/10 hover:text-red-400"
-        title="Stop saving as flow variable"
-        aria-label="Stop saving as flow variable"
-        onclick={disableSaveAsFlowVariable}
+      {@const publishKey = field.options.saveAsFlowVariable.key}
+      <!-- One chip rather than a loose label + input: it shows what the
+           field publishes *and* the form other scripts read it back as, so
+           the connection between the two ends is visible in place. -->
+      <span
+        class="flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[11px] {publishKey
+          ? 'border-hair text-ink-2'
+          : 'border-red-500/50 text-red-400'}"
+        title="Other scripts in this flow can read this value back as {'{{'}{publishKey || 'key'}{'}}'}"
       >
-        <XIcon size={11} weight="bold" />
-      </button>
+        <FlagIcon size={10} weight="fill" class="shrink-0 text-accent-500" />
+        Publishes as
+        <span class="font-mono text-ink-3">&#123;&#123;</span>
+        <FlowVariableInput
+          mode="key"
+          keys={flowVariableKeys}
+          value={publishKey}
+          onInput={setSaveAsFlowVariableKey}
+          class="w-24 rounded-sm bg-transparent font-mono text-xs text-ink-1 outline-none"
+          placeholder="key"
+          ariaLabel="Flow variable key"
+        />
+        <span class="font-mono text-ink-3">&#125;&#125;</span>
+        <button
+          type="button"
+          class="rounded-md p-0.5 text-ink-3 hover:bg-red-500/10 hover:text-red-400"
+          title="Stop publishing this field"
+          aria-label="Stop saving as flow variable"
+          onclick={disableSaveAsFlowVariable}
+        >
+          <XIcon size={11} weight="bold" />
+        </button>
+      </span>
+      {#if !publishKey}
+        <span class="text-[11px] text-red-400">Name it, or the script can't be saved.</span>
+      {/if}
     {:else}
       <button
         type="button"
         class="flex items-center gap-1 text-[11px] font-medium text-ink-3 transition hover:text-accent-500"
+        title="Publish this field's value so other scripts in the same flow can use it"
         onclick={enableSaveAsFlowVariable}
       >
         <PlusIcon size={10} weight="bold" />

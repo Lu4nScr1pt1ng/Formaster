@@ -17,6 +17,10 @@
     $props();
 
   useEscapeToClose(() => open, () => onCancel());
+
+  // Per instance: two dialogs mounted at once would otherwise both claim the
+  // same DOM id and `aria-labelledby` would resolve to whichever came first.
+  const titleId = `confirm-dialog-title-${crypto.randomUUID()}`;
 </script>
 
 {#if open}
@@ -31,7 +35,7 @@
       class="w-full max-w-sm rounded-xl bg-surface p-5 shadow-2xl"
       role="alertdialog"
       aria-modal="true"
-      aria-labelledby="confirm-dialog-title"
+      aria-labelledby={titleId}
     >
       <div class="flex items-start gap-3">
         <div
@@ -42,7 +46,7 @@
           <WarningIcon size={18} weight="bold" />
         </div>
         <div class="min-w-0">
-          <h2 id="confirm-dialog-title" class="text-sm font-semibold text-ink-1">{title}</h2>
+          <h2 id={titleId} class="text-sm font-semibold text-ink-1">{title}</h2>
           <p class="mt-1 text-sm text-ink-2">{message}</p>
         </div>
       </div>

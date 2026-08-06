@@ -1,21 +1,44 @@
 /**
- * Calls `onEscape` on a window-level, capture-phase Escape keydown while
- * `active()` is true. Capture + window (not a local keydown handler) so it
- * fires regardless of which element currently has focus — including inside
- * CodeMirror, which binds its own keymap and would otherwise swallow the key
- * before a local/bubble-phase listener ever saw it.
+ * Escape is handled as a **stack**: only the innermost open thing reacts.
+ *
+ * Every consumer used to bind its own window-level capture listener, so an
+ * Escape with a suggestion popup open inside the File Template modal fired
+ * both — dismissing the popup and closing the whole modal underneath it.
+ * Registering into one ordered list instead means the most recently opened
+ * layer wins and the ones below it never see the key.
  */
+const escapeLayers: Array<() => void> = [];
+
+function handleEscape(event: KeyboardEvent): void {
+  if (event.key !== 'Escape') return;
+  const innermost = escapeLayers[escapeLayers.length - 1];
+  if (!innermost) return;
+  event.preventDefault();
+  event.stopPropagation();
+  innermost();
+}
+
+function setListening(shouldListen: boolean): void {
+  // Capture phase and window-level so it fires regardless of what has focus,
+  // including inside CodeMirror, which binds its own keymap and would
+  // otherwise swallow the key before a bubble-phase listener saw it.
+  if (shouldListen) window.addEventListener('keydown', handleEscape, true);
+  else window.removeEventListener('keydown', handleEscape, true);
+}
+
+/** Calls `onEscape` on Escape while `active()` is true and no newer layer is open above this one. */
 export function useEscapeToClose(active: () => boolean, onEscape: () => void): void {
   $effect(() => {
     if (!active()) return;
-    function handleKeydown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onEscape();
-      }
-    }
-    window.addEventListener('keydown', handleKeydown, true);
-    return () => window.removeEventListener('keydown', handleKeydown, true);
+    const layer = () => onEscape();
+    escapeLayers.push(layer);
+    if (escapeLayers.length === 1) setListening(true);
+
+    return () => {
+      const index = escapeLayers.lastIndexOf(layer);
+      if (index !== -1) escapeLayers.splice(index, 1);
+      if (escapeLayers.length === 0) setListening(false);
+    };
   });
 }
 

@@ -145,7 +145,9 @@ test('the Flow variables panel refreshes on its own when a run finishes in anoth
   await options.getByRole('button', { name: /Flow variables/ }).click();
   // Declared by the sibling script but never run: the panel has to say so
   // rather than omit the key entirely.
-  await expect(options.locator('text=fullName')).toBeVisible();
+  // The key now also appears as a chip in the collapsed summary row, so
+  // scope to the expanded panel's own row.
+  await expect(options.locator('text=fullName').first()).toBeVisible();
   await expect(options.locator('text=not filled yet')).toBeVisible();
 
   // Now run the publishing script against page A, in a completely
@@ -185,10 +187,10 @@ test('the sidebar shows a multi-script Flow as a collapsible folder, and the edi
   await folder.click();
   await expect(options.locator('nav [role="group"] button', { hasText: 'Page A — name' })).toBeVisible();
 
-  // The sibling chip specifically, not the sidebar entry with the same text —
-  // the "Open" link only exists inside the editor's Flow panel.
-  const siblingChip = options.locator('span', { hasText: 'Page A — name' });
-  await expect(siblingChip.getByRole('button', { name: 'Open' })).toBeVisible();
+  // The editor's "Pages:" row links the flow's other scripts — scoped to
+  // that paragraph, since the sidebar entry carries the same text.
+  const pagesRow = options.locator('p', { hasText: 'Pages:' });
+  await expect(pagesRow.getByRole('button', { name: 'Page A — name' })).toBeVisible();
 });
 
 test('deleting the last script in a Flow deletes the Flow, but deleting one of two does not', async ({ context, extensionId, serviceWorker, staticServer }) => {

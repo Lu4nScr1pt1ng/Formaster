@@ -214,7 +214,7 @@ export const DOC_SECTIONS: DocSection[] = [
       p(
         'A delay step is a fixed pause: it always waits its full `delayMs` before moving on, no matter what\'s happening on the page. Use it for a plain "give the page a moment" pause where you don\'t have (or don\'t need) something concrete to watch for.',
       ),
-      p('Add one from the script editor\'s "Add wait" button; move it anywhere in the step list with the row\'s up/down arrows (there\'s no drag-and-drop, only these).'),
+      p('Add one from the script editor\'s "Add wait" button; move it anywhere in the step list with the row\'s up/down arrows. (Dragging works in the script list, where it reorders whole scripts — inside a script, step order is arrows only.)'),
     ],
   },
   {
@@ -460,7 +460,7 @@ return prefix + "_" + n;`,
         'A field that fails — its selector doesn\'t resolve, or its own generator throws — also doesn\'t populate `fields`. Reading a key that was never set just gives you JavaScript\'s `undefined`, not an error, so guard with something like `fields.company || "N/A"` if an earlier field might legitimately be missing.',
       ]),
       tip(
-        'If a generator needs to read another field, move that field above it in the step list first, using its row\'s up/down arrows (no drag-and-drop) — same as reordering delays and waits.',
+        'If a generator needs to read another field, move that field above it in the step list first, using its row\'s up/down arrows — same as reordering delays and waits. (Dragging is for the script list in the sidebar, not for steps.)',
       ),
     ],
   },
@@ -513,6 +513,9 @@ return prefix + "_" + n;`,
       code('return "REF-" + String(flowVars.email || "").split("@")[0].toUpperCase();', 'js'),
       p(
         '**`flowVars` vs. `fields`** — both let a generator read another value, and they are not interchangeable: `fields` is scoped to *this run of this script* and keyed by a field\'s camelCased label (see [The `fields` object](#fields-object)), while `flowVars` is scoped to the whole *Flow*, keyed by whatever string you typed, and survives across pages and runs until the Flow is reset. Reach for `fields` within one page, `flowVars` across pages.',
+      ),
+      p(
+        'You rarely have to type a key twice: anywhere a key is expected, the field suggests the ones this Flow already has — and in the free-text fields that take `{{key}}` (a fixed value, a template\'s literal layer, an output filename), typing `{{` opens the same list and picking one completes the placeholder where your cursor is.',
       ),
       p(
         'The key is plain free text with no schema behind it, so the field publishing it and whatever consumes it have to agree on spelling by convention. Three guardrails help: the "Save as flow variable" key input autocompletes from every key already used in the same Flow; the script editor\'s "Flow variables" panel lists every key the Flow declares — including ones **not filled yet** — with each published value and how long ago it landed, refreshing on its own as soon as a run finishes; and a File Template text layer bound to a key nobody publishes shows a non-blocking "No field currently saves this key" warning while authoring.',
@@ -575,6 +578,49 @@ return prefix + "_" + n;`,
     ],
   },
 
+  {
+    id: 'organizing-scripts',
+    title: 'Organizing the script list',
+    category: 'Flows & generated files',
+    blocks: [
+      p(
+        'The script list shows each Flow as a folder holding its scripts. Click a folder to collapse it; the download icon on its row [exports the whole Flow](#flow-export-import). A Flow with a single script is a folder too — every script lives in one, so there is nowhere else for it to be.',
+      ),
+      p('Scripts can be rearranged, which matters once a Flow is the several pages of one process and you want them in the order you actually walk them:'),
+      list([
+        '**Drag** a script up or down inside its folder to reorder it, or onto another folder to move it there — which changes the script\'s Flow, so it starts sharing variables and identity with that Flow instead.',
+        '**Keyboard**: focus a script and hold `Alt` with `↑`/`↓` to reorder it, or `←`/`→` to move it to the previous/next folder. Dragging is unusable without a mouse, so this is the same operation, not a lesser one.',
+      ]),
+      p(
+        'Order is saved per Flow as soon as you drop, with no Save needed — reordering doesn\'t touch the scripts themselves, so it can\'t disturb an editor you have open next to it.',
+      ),
+      warning(
+        'Moving the **last** script out of a Flow removes that Flow, along with its name and description — the same thing that happens when you delete the last script in it. There is nowhere to show an empty Flow, so it isn\'t kept.',
+      ),
+      tip('Folders are ordered by when the Flow was created, so they stay put when you move scripts around.'),
+    ],
+  },
+  {
+    id: 'unsaved-changes',
+    title: 'Unsaved changes',
+    category: 'Flows & generated files',
+    blocks: [
+      p(
+        'The editor works on its own copy of a script, so nothing reaches storage until you hit **Save**. Anything that would throw that copy away asks first — clicking another script, creating or duplicating one, opening the import dialog, the **Close** button, and closing the tab.',
+      ),
+      list([
+        '**Save & continue** — persists, then does what you asked. If the script can\'t be saved (a blank selector, say), you stay where you are with the error, rather than losing it behind a different script.',
+        '**Discard changes** — throws the edits away and continues.',
+        '**Cancel** — stays put, edits intact. `Esc` and clicking outside do the same.',
+      ]),
+      p(
+        'Editing and then undoing your edit counts as no change at all, so it won\'t prompt. Flow name and description edits count too — they\'re saved with the script.',
+      ),
+      p(
+        'If another tab (or the field picker) changes the script you have open, the editor takes the new version only when you have nothing unsaved; otherwise it keeps your work and says so.',
+      ),
+    ],
+  },
   {
     id: 'flow-export-import',
     title: 'Exporting and importing a Flow',

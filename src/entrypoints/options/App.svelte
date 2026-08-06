@@ -16,6 +16,7 @@
   import BrandIcon from '../../components/BrandIcon.svelte';
   import ImportDialog, { type ImportPayload } from '../../components/ImportDialog.svelte';
   import ScriptEditor from '../../components/ScriptEditor.svelte';
+  import UnsavedChangesDialog from '../../components/UnsavedChangesDialog.svelte';
   import ToastHost from '../../components/ToastHost.svelte';
   import type { RuntimeMessage } from '../../lib/messaging/types';
   import {
@@ -26,6 +27,9 @@
     type FormScript,
   } from '../../lib/schema/script';
   import { createEmptyFlow, type Flow } from '../../lib/schema/flow';
+  import { applyScriptOrder, moveByOffset, moveWithin } from '../../lib/script-order';
+  import { listFlowOrders, moveScriptToFlow, setFlowOrder } from '../../lib/storage/script-order-store';
+  import { createUnsavedGuard } from '../../lib/unsaved-guard.svelte';
   import {
     applyFlowBundlePlan,
     buildFlowBundle,
@@ -45,6 +49,10 @@
   // Bumped to force the open ScriptEditor to remount after an import
   // rewrites the data under it — see `handleImportFlow`.
   let editorEpoch = $state(0);
+
+  // Selecting another script destroys the editor (the `{#key}` below), so
+  // anything that changes the selection has to go through here first.
+  const unsavedGuard = createUnsavedGuard();
   // Below the `md` breakpoint the sidebar becomes an off-canvas drawer
   // instead of a static column — there isn't room for both side by side down
   // to ~300px wide. Ignored at `md` and up, where the sidebar is always shown.
@@ -96,13 +104,16 @@
     flowId: string;
     name: string;
     scripts: FormScript[];
+    /** Only used to keep folder order stable; not rendered. */
+    createdAt: string;
   }
 
   // Every script lives in a Flow, so every script shows up inside that
   // Flow's folder — including a Flow with a single script. Uniform on
   // purpose: a new script has to land somewhere visible, and moving one to
   // another Flow has to visibly move it between folders.
-  const groupedScripts = $derived(groupByFlow(filteredScripts, flows, liveDraft));
+  let flowOrders = $state<Record<string, string[]>>({});
+  const groupedScripts = $derived(groupByFlow(filteredScripts, flows, liveDraft, flowOrders));
   let collapsedFlowIds = $state(new Set<string>());
 
   function toggleFlowFolder(flowId: string): void {
@@ -130,24 +141,32 @@
     });
   });
 
-  function groupByFlow(list: FormScript[], allFlows: Flow[], draft: typeof liveDraft): ScriptGroup[] {
+  function groupByFlow(list: FormScript[], allFlows: Flow[], draft: typeof liveDraft, orders: Record<string, string[]>): ScriptGroup[] {
     const flowsById = new Map(allFlows.map((flow) => [flow.id, flow]));
-    const order: string[] = [];
     const buckets = new Map<string, FormScript[]>();
     for (const script of list) {
-      if (!buckets.has(script.flowId)) {
-        buckets.set(script.flowId, []);
-        order.push(script.flowId);
-      }
+      if (!buckets.has(script.flowId)) buckets.set(script.flowId, []);
       buckets.get(script.flowId)!.push(script);
     }
-    return order.map((flowId) => {
+
+    const groups = [...buckets.entries()].map(([flowId, scriptsInFlow]) => {
       const stored = flowsById.get(flowId);
       // A Flow the editor just created (or just renamed) isn't in storage
       // yet, so its folder takes the name straight off the live draft.
       const name = draft?.flowId === flowId ? draft.flowName : stored?.name;
-      return { flowId, name: name || stored?.name || 'Untitled flow', scripts: buckets.get(flowId)! };
+      return {
+        flowId,
+        name: name || stored?.name || 'Untitled flow',
+        scripts: applyScriptOrder(scriptsInFlow, orders[flowId]),
+        createdAt: stored?.createdAt ?? '',
+      };
     });
+
+    // Folder order used to be "first flowId seen while walking the scripts",
+    // which made folders jump around whenever a script was reassigned. The
+    // Flow's own creation time is stable and roughly matches the order they
+    // were made in.
+    return groups.sort((a, b) => (a.createdAt === b.createdAt ? a.name.localeCompare(b.name) : a.createdAt < b.createdAt ? -1 : 1));
   }
 
   onMount(() => {
@@ -163,6 +182,10 @@
         void refreshAndSelect(message.scriptId);
       } else if (message.type === 'flows/refresh') {
         void refreshFlows();
+      } else if (message.type === 'scriptOrder/refresh') {
+        // List-only: another tab rearranging must never move this tab's
+        // selection or disturb an editor open next to it.
+        void refreshOrdersAndScripts();
       }
     }
     browser.runtime.onMessage.addListener(handleMessage);
@@ -191,6 +214,7 @@
 
   async function refreshFlows(): Promise<void> {
     flows = await listFlows();
+    flowOrders = await listFlowOrders(flows.map((flow) => flow.id));
   }
 
   async function loadInitialScripts(): Promise<void> {
@@ -216,9 +240,145 @@
   async function refreshAndSelect(scriptId: string): Promise<void> {
     const [stored] = await Promise.all([listScripts(), refreshFlows()]);
     scripts = mergeWithLocalDrafts(stored);
-    if (scripts.some((script) => script.id === scriptId)) {
-      selectedId = scriptId;
+    if (!scripts.some((script) => script.id === scriptId)) return;
+    // This comes from another tab's broadcast, not from anything the user
+    // did here — so it never prompts. Jumping away from unsaved work
+    // unasked would be worse than not following the broadcast, so it just
+    // updates the list and stays put.
+    if (unsavedGuard.isDirty()) {
+      pushToast('Another tab changed a script — staying on your unsaved edits', 'info', 5000);
+      return;
     }
+    selectedId = scriptId;
+  }
+
+  async function refreshOrdersAndScripts(): Promise<void> {
+    const [stored] = await Promise.all([listScripts(), refreshFlows()]);
+    scripts = mergeWithLocalDrafts(stored);
+  }
+
+  /** Live announcement for the keyboard path, since a reorder has no other feedback for a screen reader. */
+  let reorderAnnouncement = $state('');
+
+  function scriptIdsIn(flowId: string): string[] {
+    return groupedScripts.find((group) => group.flowId === flowId)?.scripts.map((script) => script.id) ?? [];
+  }
+
+  /** Reorders within a Flow. Persisting the ids is all it takes — no script record is touched. */
+  async function reorderWithin(flowId: string, nextIds: string[]): Promise<void> {
+    flowOrders = { ...flowOrders, [flowId]: nextIds };
+    await setFlowOrder(flowId, nextIds);
+  }
+
+  async function moveScriptWithinFlow(script: FormScript, offset: -1 | 1): Promise<void> {
+    const ids = scriptIdsIn(script.flowId);
+    const next = moveByOffset(ids, script.id, offset);
+    if (next === ids) return;
+    await reorderWithin(script.flowId, next);
+    reorderAnnouncement = `${script.name} moved ${offset === -1 ? 'up' : 'down'}, position ${next.indexOf(script.id) + 1} of ${next.length}`;
+  }
+
+  async function dropScriptOnScript(draggedId: string, targetId: string, position: 'before' | 'after'): Promise<void> {
+    const dragged = scripts.find((entry) => entry.id === draggedId);
+    const target = scripts.find((entry) => entry.id === targetId);
+    if (!dragged || !target || draggedId === targetId) return;
+
+    if (dragged.flowId === target.flowId) {
+      const ids = scriptIdsIn(dragged.flowId);
+      // The list may not name every script yet (a fresh import, a script
+      // just moved in), so normalize to the rendered order before moving.
+      const normalized = ids.includes(draggedId) ? ids : [...ids, draggedId];
+      await reorderWithin(dragged.flowId, moveWithin(normalized, draggedId, targetId, position));
+      return;
+    }
+    const targetIds = scriptIdsIn(target.flowId);
+    const at = targetIds.indexOf(targetId);
+    await moveScriptToOtherFlow(dragged, target.flowId, position === 'before' ? at : at + 1);
+  }
+
+  async function moveScriptToOtherFlow(script: FormScript, toFlowId: string, index: number): Promise<void> {
+    if (script.flowId === toFlowId) return;
+    // Moving the script that's open rewrites the `flowId` in storage while
+    // the editor still holds the old one in its draft — saving afterwards
+    // would quietly move it back. Settle the draft first, then remount so
+    // the editor reloads the Flow it now belongs to.
+    if (script.id === selectedId) {
+      unsavedGuard.run(() => void performFlowMove(script, toFlowId, index));
+      return;
+    }
+    await performFlowMove(script, toFlowId, index);
+  }
+
+  async function performFlowMove(script: FormScript, toFlowId: string, index: number): Promise<void> {
+    const fromFlowId = script.flowId;
+    const flowName = groupedScripts.find((group) => group.flowId === toFlowId)?.name ?? 'another flow';
+    try {
+      const { removedEmptyFlow } = await moveScriptToFlow(script.id, fromFlowId, toFlowId, index);
+      await refreshOrdersAndScripts();
+      if (script.id === selectedId) {
+        // Its Flow changed underneath the editor; remount so `loadFlowContext`
+        // picks up the new one instead of showing the old Flow's name.
+        liveDraft = null;
+        editorEpoch += 1;
+      }
+      const emptied = groupedScripts.find((group) => group.flowId === fromFlowId)?.name;
+      reorderAnnouncement = `${script.name} moved to ${flowName}`;
+      pushToast(
+        removedEmptyFlow
+          ? `"${script.name}" moved to "${flowName}" — the now-empty flow${emptied ? ` "${emptied}"` : ''} was removed`
+          : `"${script.name}" moved to "${flowName}"`,
+        'success',
+      );
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : 'Could not move that script', 'error', 6000);
+    }
+  }
+
+  /** Alt+arrows: the keyboard equivalent of dragging, which HTML5 drag-and-drop offers no way to do. */
+  function handleScriptKeydown(event: KeyboardEvent, script: FormScript): void {
+    if (!event.altKey) return;
+    const flowIds = groupedScripts.map((group) => group.flowId);
+    const flowIndex = flowIds.indexOf(script.flowId);
+
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      void moveScriptWithinFlow(script, event.key === 'ArrowUp' ? -1 : 1);
+    } else if (event.key === 'ArrowLeft' && flowIndex > 0) {
+      event.preventDefault();
+      void moveScriptToOtherFlow(script, flowIds[flowIndex - 1], Number.MAX_SAFE_INTEGER);
+    } else if (event.key === 'ArrowRight' && flowIndex < flowIds.length - 1) {
+      event.preventDefault();
+      void moveScriptToOtherFlow(script, flowIds[flowIndex + 1], Number.MAX_SAFE_INTEGER);
+    }
+  }
+
+  // Which row the pointer is currently over during a drag, and on which
+  // half — drives the insertion line so the drop isn't a guess.
+  let dragging = $state<{ id: string; flowId: string } | null>(null);
+  let dropTarget = $state<{ id: string; position: 'before' | 'after' } | null>(null);
+  let dropFlowId = $state<string | null>(null);
+
+  function handleDragOverScript(event: DragEvent, script: FormScript): void {
+    if (!dragging) return;
+    event.preventDefault();
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    dropTarget = { id: script.id, position: event.clientY < rect.top + rect.height / 2 ? 'before' : 'after' };
+    dropFlowId = null;
+  }
+
+  function endDrag(): void {
+    dragging = null;
+    dropTarget = null;
+    dropFlowId = null;
+  }
+
+  /** Every user-initiated selection change funnels through here so unsaved work gets a prompt first. */
+  function selectScript(id: string): void {
+    if (id === selectedId) return;
+    unsavedGuard.run(() => {
+      selectedId = id;
+      sidebarOpen = false;
+    });
   }
 
   function createScript(): void {
@@ -229,8 +389,10 @@
     // the first time the script itself is saved.
     const flow = createEmptyFlow('New script');
     const script = createEmptyScript('New script', '*://*/*', flow.id);
-    scripts = [...scripts, script];
-    selectedId = script.id;
+    unsavedGuard.run(() => {
+      scripts = [...scripts, script];
+      selectedId = script.id;
+    });
   }
 
   async function openPlayground(): Promise<void> {
@@ -248,9 +410,11 @@
 
   function handleDuplicate(script: FormScript): void {
     const copy = duplicateScript(script);
-    scripts = [...scripts, copy];
-    selectedId = copy.id;
-    pushToast(`"${copy.name}" created — remember to save it`, 'info');
+    unsavedGuard.run(() => {
+      scripts = [...scripts, copy];
+      selectedId = copy.id;
+      pushToast(`"${copy.name}" created — remember to save it`, 'info');
+    });
   }
 
   async function handleSave(script: FormScript): Promise<FormScript> {
@@ -380,7 +544,7 @@
       <button
         type="button"
         class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-hair px-2 py-1.5 text-xs transition active:scale-[0.97] hover:bg-surface-hover"
-        onclick={() => (importDialogOpen = true)}
+        onclick={() => unsavedGuard.run(() => (importDialogOpen = true))}
       >
         <UploadSimpleIcon size={13} weight="bold" />
         Import
@@ -420,13 +584,41 @@
       </div>
     {/if}
 
+    <!-- Dragging gives sighted users feedback on its own; this is the only
+         feedback the keyboard path (Alt+arrows) has. -->
+    <p class="sr-only" role="status" aria-live="polite">{reorderAnnouncement}</p>
+
     <nav class="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2">
       {#each groupedScripts as group (group.flowId)}
         {@const open = !collapsedFlowIds.has(group.flowId)}
         <!-- The export action is a sibling of the toggle, not nested inside
              it: a <button> inside a <button> is invalid HTML and the inner
              one never receives its own click. -->
-        <div class="group flex items-center gap-0.5 rounded-lg transition hover:bg-surface-hover">
+        <div
+          class="group flex items-center gap-0.5 rounded-lg transition hover:bg-surface-hover {dropFlowId === group.flowId
+            ? 'ring-1 ring-accent-500'
+            : ''}"
+          data-flow-id={group.flowId}
+          role="presentation"
+          ondragover={(event) => {
+            if (!dragging || dragging.flowId === group.flowId) return;
+            event.preventDefault();
+            dropFlowId = group.flowId;
+            dropTarget = null;
+          }}
+          ondragleave={() => {
+            if (dropFlowId === group.flowId) dropFlowId = null;
+          }}
+          ondrop={(event) => {
+            if (!dragging) return;
+            event.preventDefault();
+            const script = scripts.find((entry) => entry.id === dragging!.id);
+            // Dropped on the folder itself rather than between two scripts:
+            // append, which is where a new arrival belongs.
+            if (script) void moveScriptToOtherFlow(script, group.flowId, Number.MAX_SAFE_INTEGER);
+            endDrag();
+          }}
+        >
           <button
             type="button"
             class="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[12.5px] text-ink-2 transition group-hover:text-ink-1"
@@ -461,13 +653,34 @@
             {#each group.scripts as script (script.id)}
               <button
                 type="button"
+                draggable="true"
+                data-script-id={script.id}
                 class="w-full truncate rounded-lg px-2 py-1.5 text-left text-[12.5px] transition {selectedId === script.id
                   ? 'bg-accent-500/13 font-semibold text-accent-500'
-                  : 'text-ink-2 hover:bg-surface-hover hover:text-ink-1'}"
-                onclick={() => {
-                  selectedId = script.id;
-                  sidebarOpen = false;
+                  : 'text-ink-2 hover:bg-surface-hover hover:text-ink-1'} {dragging?.id === script.id
+                  ? 'opacity-40'
+                  : ''} {dropTarget?.id === script.id && dropTarget.position === 'before'
+                  ? 'shadow-[inset_0_2px_0_0_var(--color-accent-500)]'
+                  : ''} {dropTarget?.id === script.id && dropTarget.position === 'after'
+                  ? 'shadow-[inset_0_-2px_0_0_var(--color-accent-500)]'
+                  : ''}"
+                title="Drag to reorder or move to another flow — or Alt with the arrow keys"
+                onclick={() => selectScript(script.id)}
+                onkeydown={(event) => handleScriptKeydown(event, script)}
+                ondragstart={(event) => {
+                  dragging = { id: script.id, flowId: script.flowId };
+                  event.dataTransfer?.setData('text/plain', script.id);
+                  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
                 }}
+                ondragover={(event) => handleDragOverScript(event, script)}
+                ondrop={(event) => {
+                  if (!dragging || !dropTarget) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void dropScriptOnScript(dragging.id, dropTarget.id, dropTarget.position);
+                  endDrag();
+                }}
+                ondragend={endDrag}
               >
                 {script.name}
               </button>
@@ -505,6 +718,7 @@
             onExport={handleExport}
             onDuplicate={handleDuplicate}
             onDraftChange={(draft) => (liveDraft = draft)}
+            {unsavedGuard}
           />
         {/key}
       {:else}
@@ -519,6 +733,15 @@
   existingScripts={scripts}
   onImport={handleImport}
   onCancel={() => (importDialogOpen = false)}
+/>
+
+<UnsavedChangesDialog
+  open={unsavedGuard.open}
+  label={unsavedGuard.label}
+  saving={unsavedGuard.saving}
+  onCancel={unsavedGuard.cancel}
+  onDiscard={unsavedGuard.discard}
+  onSave={unsavedGuard.saveAndProceed}
 />
 
 <ToastHost />

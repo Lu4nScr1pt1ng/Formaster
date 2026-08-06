@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { browser } from 'wxt/browser';
   import BracketsCurlyIcon from 'phosphor-svelte/lib/BracketsCurlyIcon';
   import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon';
+  import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon';
   import CheckIcon from 'phosphor-svelte/lib/CheckIcon';
   import CopySimpleIcon from 'phosphor-svelte/lib/CopySimpleIcon';
   import CursorClickIcon from 'phosphor-svelte/lib/CursorClickIcon';
@@ -46,6 +47,8 @@
     type ScriptStep,
     type WaitForStep,
   } from '../lib/schema/script';
+  import { deepEqualIgnoring } from '../lib/stable-stringify';
+  import type { UnsavedGuard } from '../lib/unsaved-guard.svelte';
   import { deleteFileTemplate, listFileTemplates, saveFileTemplate } from '../lib/storage/file-templates-store';
   import { resetFlowIdentity } from '../lib/storage/flow-identity-store';
   import { getFlowVariables, listFlowValues, resetFlowValues } from '../lib/storage/flow-values-store';
@@ -68,9 +71,16 @@
      * user types instead of only catching up on Save.
      */
     onDraftChange?: (draft: { id: string; name: string; flowId: string; flowName: string }) => void;
+    /**
+     * When present, this editor registers itself as the holder of unsaved
+     * work, so whatever wants to navigate away can ask first. Registration
+     * rather than a `bind:this` handle because the editor is remounted by a
+     * `{#key}` on every selection change.
+     */
+    unsavedGuard?: UnsavedGuard;
   }
 
-  let { script, onSave, onDelete, onExport, onDuplicate, showAddFieldsFromPage = true, onDraftChange }: Props = $props();
+  let { script, onSave, onDelete, onExport, onDuplicate, showAddFieldsFromPage = true, onDraftChange, unsavedGuard }: Props = $props();
 
   // Local editable copy so navigating away without saving doesn't mutate storage.
   // `script` is itself a reactive $state proxy; $state.snapshot() resolves it to an
@@ -80,20 +90,56 @@
   // svelte-ignore state_referenced_locally
   let draft = $state<FormScript>($state.snapshot(script));
 
-  // Tracks the updatedAt we ourselves last persisted, so the effect below can
-  // tell "this script changed because something else touched it" (e.g. the
-  // background appending fields from "Add fields from page") apart from
-  // "this script changed because we just saved it" — only the former should
-  // resync the draft. A plain full remount on every save would also work,
-  // but it wipes local UI state (open code panel, expanded selectors, etc).
+  /**
+   * The last state we and storage agreed on. Everything about "are there
+   * unsaved changes" and "did something else touch this script" is a
+   * comparison against this, which a bare `updatedAt` marker couldn't do:
+   * it distinguished "we saved it" from "someone else saved it", but never
+   * told us whether the *draft* had diverged.
+   */
   // svelte-ignore state_referenced_locally
-  let lastSyncedUpdatedAt = $state(script.updatedAt);
+  let baseline = $state<FormScript>($state.snapshot(script));
 
+  /**
+   * Deliberately computed on demand rather than tracked by an effect: it's
+   * only ever asked when the user tries to navigate away (or the tab is
+   * closing), so a handful of deep compares per session costs nothing — and
+   * an effect watching the draft would re-run on every keystroke, which is
+   * both wasteful and, as this went through, a loop waiting to happen.
+   */
+  export function isDirty(): boolean {
+    const draftChanged = !deepEqualIgnoring($state.snapshot(draft), baseline, ['updatedAt']);
+    // A Flow that isn't in storage yet has no baseline to diverge from — it
+    // gets created as a side effect of saving the script.
+    const flowChanged = flow !== null && storedFlow !== null && !deepEqualIgnoring($state.snapshot(flow), storedFlow, ['updatedAt']);
+    return draftChanged || flowChanged;
+  }
+
+  $effect(() => unsavedGuard?.register({ isDirty, save, label: () => draft.name }));
+
+  function adoptAsSaved(next: FormScript): void {
+    baseline = $state.snapshot(next);
+  }
+
+  // Something else wrote to this script (the background appending fields
+  // from "Add fields from page", another tab saving it). Adopt it only when
+  // the local draft has nothing to lose — otherwise the user's in-progress
+  // edits would vanish under them.
+  //
+  // Only `script` is a dependency: everything this reads and writes
+  // afterwards is untracked, or adopting (which assigns `draft`) would make
+  // the effect its own trigger.
   $effect(() => {
-    if (script.updatedAt !== lastSyncedUpdatedAt) {
-      draft = $state.snapshot(script);
-      lastSyncedUpdatedAt = script.updatedAt;
-    }
+    const incoming = $state.snapshot(script);
+    untrack(() => {
+      if (deepEqualIgnoring(incoming, baseline, ['updatedAt'])) return;
+      if (isDirty()) {
+        pushToast('This script changed elsewhere — your unsaved edits were kept.', 'info', 6000);
+        return;
+      }
+      draft = incoming;
+      baseline = incoming;
+    });
   });
 
   let saveFlash = $state(false);
@@ -108,11 +154,15 @@
   // options/App.svelte and playground/App.svelte — so there's no stale state
   // to worry about). `null` here means "not loaded yet", not "no Flow".
   let flow = $state<Flow | null>(null);
+  /** The Flow as storage has it, so edits to the name/description count as unsaved changes too. */
+  let storedFlow = $state<Flow | null>(null);
   let allFlows = $state<Flow[]>([]);
   let allScripts = $state<FormScript[]>([]);
   let fileTemplates = $state<FileTemplate[]>([]);
   let flowValues = $state<Record<string, { value: string; updatedAt: string }>>({});
   let flowVariablesPanelOpen = $state(false);
+  // The description is rarely used, so it stays out of the way until asked for.
+  let descriptionOpen = $state(false);
   const resetFlowGate = createConfirmGate();
 
   // Which field to assign a newly-created template back to (set only when
@@ -133,7 +183,13 @@
   // contributes its live `draft` instead, so a key just marked in an
   // unsaved edit shows up immediately as a suggestion/orphan-resolution.
   const scriptsForKeyScan = $derived([...allScripts.filter((script) => script.id !== draft.id), draft]);
-  const flowVariableKeys = $derived(collectSavedFlowVariableKeys(scriptsForKeyScan, draft.flowId));
+  // Declared keys plus any a run actually published: a value can exist in
+  // the Flow without any field currently declaring it (the field was edited
+  // or deleted after the run), and it's still readable, so it's still worth
+  // suggesting.
+  const flowVariableKeys = $derived(
+    [...new Set([...collectSavedFlowVariableKeys(scriptsForKeyScan, draft.flowId), ...Object.keys(flowValues)])].sort(),
+  );
   const allPublishedFlowVariableKeys = $derived(collectSavedFlowVariableKeys(scriptsForKeyScan));
   // Not gated on having sibling scripts: a single script can publish a
   // variable in one field and read it back (via `{{key}}` or `flowVars.key`)
@@ -184,6 +240,9 @@
     // — either way, an implicit single-script Flow named after the script,
     // persisted for real the first time this script is actually saved.
     flow = loadedFlow ?? { ...createEmptyFlow(draft.name), id: draft.flowId };
+    // Only a Flow that actually exists in storage is a baseline to diff
+    // against; a synthesized one has nothing to have diverged from.
+    storedFlow = loadedFlow ?? null;
     allFlows = flows;
     fileTemplates = templates;
     allScripts = scripts;
@@ -531,7 +590,32 @@
     return String(value);
   }
 
+  /**
+   * Clicking "Save as flow variable" starts the key empty, but the schema
+   * requires a non-empty one — so an un-named publish used to make the whole
+   * script unsavable with a `saveAsFlowVariable.key: Too small` error. An
+   * empty key means "not published yet", so drop it on the way out; the
+   * field row shows it as invalid until it's named.
+   */
+  function withoutEmptyPublishKeys(next: FormScript): FormScript {
+    return {
+      ...next,
+      steps: next.steps.map((step) => {
+        if (step.type !== 'field' || step.field.options?.saveAsFlowVariable?.key !== '') return step;
+        const { saveAsFlowVariable: _drop, ...options } = step.field.options;
+        return { ...step, field: { ...step.field, options: Object.keys(options).length > 0 ? options : undefined } };
+      }),
+    };
+  }
+
   async function save(): Promise<boolean> {
+    // Baselined *before* persisting, not after: `onSave` reassigns the
+    // parent's script list, so the `script` prop changes — and the
+    // external-change effect above would fire mid-save, see the old
+    // baseline, and warn about edits that are in fact being saved right now.
+    const previousBaseline = baseline;
+    const outgoing = withoutEmptyPublishKeys($state.snapshot(draft));
+    adoptAsSaved(outgoing);
     try {
       // The Flow this script belongs to may not be persisted yet (a brand
       // new script, or one that just switched to "+ New flow…") — always
@@ -539,16 +623,19 @@
       if (flow) {
         const savedFlow = await saveFlow(flow);
         flow = savedFlow;
+        storedFlow = savedFlow;
         if (!allFlows.some((entry) => entry.id === savedFlow.id)) allFlows = [...allFlows, savedFlow];
       }
-      const saved = await onSave($state.snapshot(draft));
-      lastSyncedUpdatedAt = saved.updatedAt;
+      const saved = await onSave(outgoing);
       draft.updatedAt = saved.updatedAt;
       saveFlash = true;
       saveFlashTimer.trigger(1500);
       return true;
     } catch {
-      // onSave already surfaced a toast explaining what's wrong.
+      // onSave already surfaced a toast explaining what's wrong. The edits
+      // are still unsaved, so put the baseline back or the guard would let
+      // the user walk away from them.
+      baseline = previousBaseline;
       return false;
     }
   }
@@ -558,6 +645,22 @@
       event.preventDefault();
       void save();
     }
+  }
+
+  /**
+   * `closeEditor()` ends in `browser.tabs.remove()`, and a programmatic tab
+   * removal never triggers `beforeunload` — so the Close button needs its own
+   * check. The `beforeunload` handler below covers the other way out (the
+   * user closing the tab themselves).
+   */
+  function requestClose(): void {
+    if (unsavedGuard) unsavedGuard.run(() => void closeEditor());
+    else void closeEditor();
+  }
+
+  function handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!isDirty()) return;
+    event.preventDefault();
   }
 
   /**
@@ -590,8 +693,11 @@
     // `draft` is a live $state proxy; the messaging API structured-clones its
     // payload and throws on a raw proxy, so snapshot before sending.
     const snapshot = $state.snapshot(draft);
+    // Baselined first, same reason as `save()` — and so the fields the
+    // picker appends afterwards arrive as a clean external change that gets
+    // adopted rather than warned about.
+    adoptAsSaved(snapshot);
     const saved = await onSave(snapshot);
-    lastSyncedUpdatedAt = saved.updatedAt;
     draft.updatedAt = saved.updatedAt;
     pushToast('Switching to the target page — click elements to add, then Finish', 'info', 4000);
     await browser.runtime.sendMessage({
@@ -602,7 +708,7 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} onbeforeunload={handleBeforeUnload} />
 
 <div class="@container flex h-full flex-col">
   <div class="flex flex-wrap items-center justify-between gap-3 border-b border-hair px-3 py-3 sm:px-6 sm:py-4">
@@ -668,7 +774,7 @@
         type="button"
         class="ml-2 flex items-center gap-1.5 rounded-lg border border-hair px-3 py-1.5 text-sm text-ink-1 transition active:scale-[0.97] hover:bg-surface-hover"
         title="Close without saving"
-        onclick={closeEditor}
+        onclick={requestClose}
       >
         <XIcon size={14} weight="bold" />
         Close
@@ -687,52 +793,91 @@
   <div class="grid min-h-0 flex-1 grid-cols-1 {showJsonView ? '@3xl:grid-cols-2' : ''}">
     <div class="min-h-0 space-y-6 overflow-y-auto px-3 py-4 sm:px-6">
       <section>
-        <label class="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-ink-3" for="flow-name">Flow</label>
+        <!-- Row 1: the Flow's identity and its two actions. The name used to
+             appear twice — once as the picker's own label, once in the input
+             beside it — so the picker is reduced to a caret-only "switch"
+             control and the name lives in exactly one place. -->
         <div class="flex flex-wrap items-center gap-2">
-          <SearchableSelect ariaLabel="Flow" value={draft.flowId} options={flowOptions} onChange={setFlowId} />
+          <label class="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-ink-3" for="flow-name">Flow</label>
+          <FolderOpenIcon size={13} weight="fill" class="shrink-0 text-ink-3" />
           <input
             id="flow-name"
-            class="min-w-0 flex-1 rounded-md border border-hair bg-canvas px-2 py-1 text-xs text-ink-1 outline-none focus:border-accent-500"
+            class="min-w-0 flex-1 rounded-t-[5px] border-b border-dashed border-white/15 bg-transparent px-1 py-0.5 text-sm font-medium text-ink-1 outline-none transition placeholder:text-ink-3 hover:border-white/30 hover:bg-surface-hover focus:border-solid focus:border-accent-500"
             placeholder="Flow name"
             value={flow?.name ?? ''}
             oninput={(event) => updateFlowName((event.currentTarget as HTMLInputElement).value)}
           />
-        </div>
-        <input
-          class="mt-1.5 w-full rounded-md border border-hair bg-canvas px-2 py-1 text-xs text-ink-2 outline-none focus:border-accent-500"
-          placeholder="Flow description (optional)"
-          value={flow?.description ?? ''}
-          oninput={(event) => updateFlowDescription((event.currentTarget as HTMLInputElement).value)}
-        />
-        <p class="mt-1.5 text-[11px] text-ink-3">
-          Scripts in the same flow can share values — e.g. a name typed on this page can appear on a file generated on
-          another page.
-        </p>
-
-        {#if siblingScripts.length > 0}
-          <div class="mt-2 flex flex-wrap gap-1.5">
-            {#each siblingScripts as sibling (sibling.id)}
-              <span class="flex items-center gap-1.5 rounded-md bg-canvas px-2 py-1 text-[11px] text-ink-2">
-                {sibling.name}
-                <button type="button" class="font-medium text-accent-500 hover:underline" onclick={() => openSiblingScript(sibling.id)}>
-                  Open
-                </button>
-              </span>
-            {/each}
-          </div>
-        {/if}
-
-        {#if showFlowVariablesPanel}
+          <SearchableSelect
+            ariaLabel="Flow"
+            value={draft.flowId}
+            options={flowOptions}
+            onChange={setFlowId}
+            compact
+            placeholder="Switch"
+            triggerClass="!text-[10px]"
+          />
           <button
             type="button"
-            class="mt-2 flex items-center gap-1 text-[11px] font-medium text-ink-2 transition hover:text-accent-500"
-            onclick={() => (flowVariablesPanelOpen = !flowVariablesPanelOpen)}
+            class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-ink-3 transition hover:bg-red-500/10 hover:text-red-400"
+            title="Clear this flow's shared variables and generated identity"
+            onclick={() => resetFlowGate.request(true)}
           >
-            <CaretDownIcon size={10} weight="bold" class="transition {flowVariablesPanelOpen ? 'rotate-180' : ''}" />
-            Flow variables ({flowVariableRows.length})
+            Reset
           </button>
+          {#if !descriptionOpen && !flow?.description}
+            <button
+              type="button"
+              class="shrink-0 text-[11px] font-medium text-ink-3 transition hover:text-accent-500"
+              onclick={() => (descriptionOpen = true)}
+            >
+              + description
+            </button>
+          {/if}
+        </div>
+
+        {#if descriptionOpen || flow?.description}
+          <input
+            class="mt-1.5 w-full rounded-md border border-hair bg-canvas px-2 py-1 text-xs text-ink-2 outline-none focus:border-accent-500"
+            placeholder="Flow description (optional)"
+            value={flow?.description ?? ''}
+            oninput={(event) => updateFlowDescription((event.currentTarget as HTMLInputElement).value)}
+          />
+        {/if}
+
+        <!-- Row 2: the other pages of this flow, as links rather than a
+             name plus a separate "Open" button. -->
+        {#if siblingScripts.length > 0}
+          <p class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-3">
+            Pages:
+            {#each siblingScripts as sibling (sibling.id)}
+              <button type="button" class="font-medium text-accent-500 hover:underline" onclick={() => openSiblingScript(sibling.id)}>
+                {sibling.name}
+              </button>
+            {/each}
+          </p>
+        {/if}
+
+        <!-- Row 3: the keys at a glance, expanding to values and timestamps. -->
+        {#if showFlowVariablesPanel}
+          <div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-3">
+            Vars:
+            {#each flowVariableRows as row (row.key)}
+              <span class="rounded bg-canvas px-1.5 py-0.5 font-mono text-ink-2 {row.entry ? '' : 'opacity-60'}">{row.key}</span>
+            {:else}
+              <span class="text-ink-3">none yet</span>
+            {/each}
+            <button
+              type="button"
+              class="ml-auto flex items-center gap-1 font-medium text-ink-2 transition hover:text-accent-500"
+              aria-expanded={flowVariablesPanelOpen}
+              onclick={() => (flowVariablesPanelOpen = !flowVariablesPanelOpen)}
+            >
+              Flow variables ({flowVariableRows.length})
+              <CaretDownIcon size={9} weight="bold" class="transition {flowVariablesPanelOpen ? 'rotate-180' : ''}" />
+            </button>
+          </div>
           {#if flowVariablesPanelOpen}
-            <div class="mt-1.5 space-y-1.5 rounded-lg bg-canvas p-2">
+            <div class="mt-1.5 space-y-1 rounded-lg bg-canvas p-2">
               {#each flowVariableRows as row (row.key)}
                 <div class="flex items-center justify-between gap-2 text-xs">
                   <span class="shrink-0 font-mono text-ink-2">{row.key}</span>
@@ -748,17 +893,6 @@
               {:else}
                 <p class="text-xs text-ink-3">No values published yet.</p>
               {/each}
-              <p class="pt-0.5 text-[10.5px] text-ink-3">
-                Read one back with <code class="font-mono">&#123;&#123;key&#125;&#125;</code> in a fixed value, or
-                <code class="font-mono">flowVars.key</code> in a custom generator.
-              </p>
-              <button
-                type="button"
-                class="mt-1 text-xs font-medium text-red-400 transition hover:underline"
-                onclick={() => resetFlowGate.request(true)}
-              >
-                Reset flow
-              </button>
             </div>
           {/if}
         {/if}

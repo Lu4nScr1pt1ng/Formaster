@@ -5,6 +5,7 @@
   import WarningIcon from 'phosphor-svelte/lib/WarningIcon';
   import XIcon from 'phosphor-svelte/lib/XIcon';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import FlowVariableInput from './FlowVariableInput.svelte';
   import FileTemplateCanvasPreview from './FileTemplateCanvasPreview.svelte';
   import SearchableSelect, { type SearchableSelectOption } from './SearchableSelect.svelte';
   import { createConfirmGate } from '../lib/confirm-gate.svelte';
@@ -321,9 +322,12 @@
 
         <label class="block">
           <span class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-ink-3">Output filename</span>
-          <input
+          <FlowVariableInput
+            mode="template"
+            keys={publishedFlowVariableKeys}
+            value={draft.outputFilename}
+            onInput={(value) => (draft.outputFilename = value)}
             class="w-full rounded-lg border border-hair bg-canvas px-3 py-1.5 font-mono text-sm text-ink-1 outline-none focus:border-accent-500"
-            bind:value={draft.outputFilename}
             placeholder="document.png"
           />
           <span class="mt-1 block text-[11px] text-ink-3">Accepts {'{{key}}'} placeholders, resolved the same way as a flow-variable layer.</span>
@@ -374,20 +378,24 @@
                     onChange={(kind) => setLayerSourceKind(layer, kind)}
                   />
                   {#if layer.source.kind === 'literal'}
-                    <input
-                      class="min-w-0 flex-1 rounded-md border border-hair bg-surface px-2 py-1 text-xs text-ink-1 outline-none focus:border-accent-500"
-                      placeholder="Text, may include {'{{flowVariable}}'}"
+                    <FlowVariableInput
+                      mode="template"
+                      keys={publishedFlowVariableKeys}
                       value={layer.source.value}
-                      oninput={(event) =>
-                        updateLayer(layer.id, { source: { kind: 'literal', value: (event.currentTarget as HTMLInputElement).value } })}
+                      onInput={(value) => updateLayer(layer.id, { source: { kind: 'literal', value } })}
+                      wrapperClass="min-w-0 flex-1"
+                      class="w-full rounded-md border border-hair bg-surface px-2 py-1 text-xs text-ink-1 outline-none focus:border-accent-500"
+                      placeholder="Text, may include {'{{flowVariable}}'}"
                     />
                   {:else}
-                    <input
-                      class="min-w-0 flex-1 rounded-md border border-hair bg-surface px-2 py-1 font-mono text-xs text-ink-1 outline-none focus:border-accent-500"
-                      placeholder="Flow variable key"
+                    <FlowVariableInput
+                      mode="key"
+                      keys={publishedFlowVariableKeys}
                       value={layer.source.key}
-                      oninput={(event) =>
-                        updateLayer(layer.id, { source: { kind: 'flowVariable', key: (event.currentTarget as HTMLInputElement).value } })}
+                      onInput={(key) => updateLayer(layer.id, { source: { kind: 'flowVariable', key } })}
+                      wrapperClass="min-w-0 flex-1"
+                      class="w-full rounded-md border border-hair bg-surface px-2 py-1 font-mono text-xs text-ink-1 outline-none focus:border-accent-500"
+                      placeholder="Flow variable key"
                     />
                   {/if}
                   <button

@@ -5,6 +5,7 @@ import type { FileTemplate } from '../schema/file-template';
 import type { Flow } from '../schema/flow';
 import { FLOW_BUNDLE_KIND, collectReferencedTemplateIds, remapTemplateIds, type FlowBundle } from '../schema/flow-bundle';
 import type { FormScript } from '../schema/script';
+import { deepEqualIgnoring } from '../stable-stringify';
 import { listFileTemplates } from './file-templates-store';
 import { getFlow } from './flows-store';
 import { listScripts } from './scripts-store';
@@ -203,25 +204,7 @@ async function broadcast(message: RuntimeMessage): Promise<void> {
   }
 }
 
-/**
- * Content equality ignoring timestamps. Needs a key-sorted stringify because
- * zod preserves input key order — a hand-edited file with the same values in
- * a different order would otherwise read as "different" and get remapped.
- */
+/** Content equality ignoring timestamps — see `stable-stringify.ts` for why a plain `JSON.stringify` compare isn't enough. */
 function isSameTemplate(a: FileTemplate, b: FileTemplate): boolean {
-  return stableStringify(withoutTimestamps(a)) === stableStringify(withoutTimestamps(b));
-}
-
-function withoutTimestamps(template: FileTemplate): Omit<FileTemplate, 'createdAt' | 'updatedAt'> {
-  const { createdAt: _createdAt, updatedAt: _updatedAt, ...rest } = template;
-  return rest;
-}
-
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
-  if (value && typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
-    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`).join(',')}}`;
-  }
-  return JSON.stringify(value) ?? 'null';
+  return deepEqualIgnoring(a, b, ['createdAt', 'updatedAt']);
 }

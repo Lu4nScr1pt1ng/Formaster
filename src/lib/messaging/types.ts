@@ -18,6 +18,10 @@ export type RuntimeMessage =
   | { type: 'fill/result'; results: FillFieldResult[] }
   | { type: 'scripts/refresh'; scriptId: string }
   | { type: 'flows/refresh'; flowId: string }
+  // Separate from `scripts/refresh` on purpose: that one makes an open
+  // Options tab re-select a script, which must not happen just because a
+  // different tab rearranged a list.
+  | { type: 'scriptOrder/refresh'; flowId: string }
   | { type: 'fileTemplates/refresh'; templateId: string }
   // Content scripts are bundled as a single non-module file with no real
   // code-splitting, so a direct `import('pdf-lib')` there would inline the
